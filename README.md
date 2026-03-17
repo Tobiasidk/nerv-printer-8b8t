@@ -26,6 +26,7 @@ Semi-automatically names unnamed map items in inventory. Pauses on anvil break a
 - Contantiam (Folia with Grim anti-cheat)
 - 6b6t
 - 8b8t
+- 9b9t
 - EndCrystal
 - MineTexas
 - 2B2FR
