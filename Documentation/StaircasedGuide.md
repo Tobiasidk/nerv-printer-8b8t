@@ -130,6 +130,10 @@ When multiple bots are used:
 
 After the entire map is mined, the process returns to **Step 2**.
 
+Demo video:
+
+[![Staircased Printer](https://img.youtube.com/vi/SLwqRpoV7jY/0.jpg)](https://www.youtube.com/watch?v=SLwqRpoV7jY)
+
 ---
 
 ## Optional Features
