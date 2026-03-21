@@ -429,7 +429,6 @@ public class CarpetPrinter extends Module implements MapPrinter {
     State oldState;
     State debugPreviousState;
     Pair<Integer, Integer> workingInterval;     //Interval the bot should work in 0-127
-    Pair<Integer, Integer> trueInterval;        //Stores the actual interval in case the old one is temporarily overwritten while repairing
     Pair<BlockPos, Vec3d> reset;
     Pair<BlockPos, Vec3d> cartographyTable;
     Pair<BlockPos, Vec3d> finishedMapChest;
@@ -922,7 +921,6 @@ public class CarpetPrinter extends Module implements MapPrinter {
                                 + MapAreaCache.getCachedBlockState(errorPos).getBlock().getName().getString()
                                 + ". Should be: " + missingBlockString);
                         }
-                        // Slaves no longer send errors to master; they will fix it themselves
                     }
                     knownErrors.addAll(newErrors);
                     if (!knownErrors.isEmpty() && errorAction.get() == ErrorAction.Reset) {
@@ -1281,7 +1279,6 @@ public class CarpetPrinter extends Module implements MapPrinter {
     private boolean endBuilding() {
         info("Finished building map");
         state = State.Walking;
-        workingInterval = trueInterval;
         knownErrors.clear();
         SlaveSystem.setAllSlavesUnfinished();
         Pair<BlockPos, Vec3d> bestChest = getBestChest(Items.CARTOGRAPHY_TABLE);
@@ -1336,7 +1333,6 @@ public class CarpetPrinter extends Module implements MapPrinter {
 
     public void setInterval(Pair<Integer, Integer> interval) {
         workingInterval = interval;
-        trueInterval = interval;
     }
 
     public void addError(BlockPos relativeBlockPos) {
