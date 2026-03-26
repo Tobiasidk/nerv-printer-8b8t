@@ -10,7 +10,7 @@
   "contact": {
     "repo": "https://github.com/Julflips/nerv-printer-addon"
   },
-  "icon": "assets/template/icon.png",
+  "icon": "assets/nerv/icon.png",
   "environment": "client",
   "entrypoints": {
     "meteor": [
