@@ -196,7 +196,110 @@ public final class Utils {
         return -1;
     }
 
-    public static void swapIntoHotbar(int slot, ArrayList<Integer> hotBarSlots) {
+    //find the last item to be used among the usable hotbar slots
+    private static <T> Integer getLastUsedHotbarItem(ArrayList<Integer> hotBarSlots, T[][] map, Pair<Integer, Integer> interval, int linesPerRun, BlockPos mapCorner) {
+        HashMap<Item, Integer> hotBarItems = new HashMap<>();
+        HashMap<Item, Integer> itemToHotbarSlot = new HashMap<>();
+
+        for (int hotSlot : hotBarSlots) {
+            ItemStack st = mc.player.getInventory().getStack(hotSlot);
+            if (st.isEmpty()) continue;
+            Item it = st.getItem();
+            hotBarItems.putIfAbsent(it, -1);
+            itemToHotbarSlot.putIfAbsent(it, hotSlot);
+        }
+
+        if (hotBarItems.isEmpty()) return null;
+
+        int index = 0;
+        boolean isStartSide = true;
+        boolean hasFoundAir = false;
+
+        outer:
+        for (int x = interval.getLeft(); x <= interval.getRight(); x += linesPerRun) {
+            for (int z = 0; z < 128; z++) {
+                for (int lineBonus = 0; lineBonus < linesPerRun; lineBonus++, index++) {
+                    int adjustedX = x + lineBonus;
+                    if (adjustedX > interval.getRight()) break;
+                    int adjustedZ = isStartSide ? z : 127 - z;
+
+                    BlockState blockState = MapAreaCache.getCachedBlockState(mapCorner.add(adjustedX, 0, adjustedZ));
+                    if (blockState.isAir()) {
+                        if (!hasFoundAir) {
+                            hasFoundAir = true;
+                            BlockState oppositeBlockState = MapAreaCache.getCachedBlockState(mapCorner.add(adjustedX, 0, 127 - adjustedZ));
+                            //if we find air but the opposite block isnt, that means the snake pattern got reversed at some point, so we reverse it again
+                            if (!oppositeBlockState.isAir() && z < 127 - z) {
+                                isStartSide = !isStartSide;
+                                z = 0;
+                                lineBonus = 0;
+                            }
+                        }
+
+                        T cell = map[adjustedX][adjustedZ];
+                        if (cell == null) continue;
+                        Item material = extractItemFromCell(cell);
+                        if (material == null) continue;
+
+                        if (hotBarItems.containsKey(material) && hotBarItems.get(material) == -1) {
+                            hotBarItems.put(material, index);
+
+                            boolean allFound = true;
+                            for (int v : hotBarItems.values()) {
+                                if (v == -1) { allFound = false; break; }
+                            }
+                            if (allFound) break outer;
+                        }
+                    }
+                }
+            }
+            isStartSide = !isStartSide;
+        }
+
+        ArrayList<Integer> neverUsed = new ArrayList<>();
+        for (Map.Entry<Item, Integer> e : hotBarItems.entrySet()) {
+            if (e.getValue() == -1) {
+                Integer hs = itemToHotbarSlot.get(e.getKey());
+                if (hs != null) neverUsed.add(hs);
+            }
+        }
+        if (!neverUsed.isEmpty()) {
+            Collections.sort(neverUsed);
+            return neverUsed.get(0);
+        }
+
+        Item best = null;
+        int bestIdx = -1;
+        for (Map.Entry<Item, Integer> e : hotBarItems.entrySet()) {
+            int idx = e.getValue();
+            if (idx > bestIdx) {
+                bestIdx = idx;
+                best = e.getKey();
+            } else if (idx == bestIdx) {
+                int curSlot = itemToHotbarSlot.getOrDefault(best, Integer.MAX_VALUE);
+                int candSlot = itemToHotbarSlot.getOrDefault(e.getKey(), Integer.MAX_VALUE);
+                if (candSlot < curSlot) best = e.getKey();
+            }
+        }
+
+        if (best == null) return null;
+        return itemToHotbarSlot.get(best);
+    }
+
+    // vibecoded extractor to make it compatible with staircasedprinter
+
+    private static <T> Item extractItemFromCell(T cell) {
+        if (cell instanceof Block b) return b.asItem();
+        if (cell instanceof Pair<?, ?> p) {
+            Object left = p.getLeft();
+            if (left instanceof Block lb) return lb.asItem();
+            if (left instanceof Item li) return li;
+        }
+        if (cell instanceof Item i) return i;
+        return null;
+    }
+
+    public static <T> void swapIntoHotbar(int slot, ArrayList<Integer> hotBarSlots, T[][] map, Pair<Integer,Integer> workingInterval, int linesPerRun, BlockPos mapCorner) {
         HashMap<Item, Integer> itemFrequency = new HashMap<>();
         HashMap<Item, Integer> itemSlot = new HashMap<>();
         int targetSlot = hotBarSlots.get(0);
@@ -213,26 +316,57 @@ public final class Utils {
                 }
             }
         }
-        int topFrequency = 0;
-        ArrayList<Item> topFrequencyItems = new ArrayList<>();
-        for (Item item : itemFrequency.keySet()) {
-            if (itemFrequency.get(item) > topFrequency) {
-                topFrequency = itemFrequency.get(item);
-                topFrequencyItems = new ArrayList<>(Collections.singletonList(item));
-            } else if (itemFrequency.get(item) == topFrequency) {
-                topFrequencyItems.add(item);
+
+        // check if all hotbar slots are full and contain unique items
+        boolean allFullAndUnique = true;
+        HashSet<Item> seen = new HashSet<>();
+        for (int i : hotBarSlots) {
+            ItemStack st = mc.player.getInventory().getStack(i);
+            if (st.isEmpty()) {
+                allFullAndUnique = false;
+                break;
+            }
+            Item it = st.getItem();
+            if (!seen.add(it)) {
+                allFullAndUnique = false;
+                break;
             }
         }
-        if (!topFrequencyItems.isEmpty()) {
-            Random random = new Random();
-            Item item = topFrequencyItems.get(random.nextInt(topFrequencyItems.size()));
-            targetSlot = itemSlot.get(item);
-        }
 
-        //Prefer emtpy slots
-        for (int i : hotBarSlots) {
-            if (mc.player.getInventory().getStack(i).isEmpty()) {
-                targetSlot = i;
+        // if hotbar is full & unique then replace last to use item
+        if (allFullAndUnique) {
+            Integer chosen = getLastUsedHotbarItem(hotBarSlots, map, workingInterval, linesPerRun, mapCorner);
+            if (chosen != null) {
+                targetSlot = chosen;
+            }
+        }
+        else {
+            // Old logic: choose most frequent item
+            int topFrequency = 0;
+            ArrayList<Item> topFrequencyItems = new ArrayList<>();
+
+            for (Item item : itemFrequency.keySet()) {
+                int freq = itemFrequency.get(item);
+                if (freq > topFrequency) {
+                    topFrequency = freq;
+                    topFrequencyItems.clear();
+                    topFrequencyItems.add(item);
+                }
+                else if (freq == topFrequency) {
+                    topFrequencyItems.add(item);
+                }
+            }
+
+            if (!topFrequencyItems.isEmpty()) {
+                Item item = topFrequencyItems.get(new Random().nextInt(topFrequencyItems.size()));
+                targetSlot = itemSlot.get(item);
+            }
+
+            //Prefer empty slots
+            for (int i : hotBarSlots) {
+                if (mc.player.getInventory().getStack(i).isEmpty()) {
+                    targetSlot = i;
+                }
             }
         }
 
@@ -243,6 +377,42 @@ public final class Utils {
         cim.clickSlot(mc.player.currentScreenHandler.syncId, slot, targetSlot, SlotActionType.SWAP, mc.player);
         //mc.getNetworkHandler().sendPacket(new ClickSlotC2SPacket(0, slot, targetSlot, 0, SlotActionType.SWAP, new ItemStack(Items.AIR), Int2ObjectMaps.emptyMap()));
     }
+
+
+
+    //low budget autoreplenish (but better, so like, high budget)
+    public static void lowBudgetAutoReplenish(int threshold, ArrayList<Integer> hotBarSlots) {
+        if (hotBarSlots == null || hotBarSlots.isEmpty()) return;
+
+        IClientPlayerInteractionManager cim = (IClientPlayerInteractionManager) mc.interactionManager;
+        int syncId = mc.player.currentScreenHandler.syncId;
+
+        for (int hotSlot : hotBarSlots) {
+            ItemStack hotStack = mc.player.getInventory().getStack(hotSlot);
+            if (hotStack.isEmpty()) continue;
+
+            // Only act when at or below threshold
+            if (hotStack.getCount() > threshold) continue;
+
+            Item targetItem = hotStack.getItem();
+
+            int sourceSlot = -1;
+            for (int s = 9; s < 36; s++) {
+                ItemStack st = mc.player.getInventory().getStack(s);
+                if (st.isEmpty()) continue;
+                if (st.getItem() != targetItem) continue;
+                sourceSlot = s;
+                break;
+            }
+
+            if (sourceSlot == -1) continue; // nothing to refill from
+
+            // Shift-click (quick-move) the source stack into the hotbar
+            cim.clickSlot(syncId, sourceSlot, 0, SlotActionType.QUICK_MOVE, mc.player);
+    }
+}
+
+
 
     public static void iterateBlocks(BlockPos startingPos, int horizontalRadius, int verticalRadius, BiConsumer<BlockPos, BlockState> function) {
         int px = startingPos.getX();
@@ -360,7 +530,7 @@ public final class Utils {
         return map;
     }
 
-    public static ArrayList<BlockPos> getInvalidPlacements(BlockPos mapCorner, Pair<Integer, Integer> interval, Block[][] map, ArrayList<BlockPos> knownErrors) {
+    public static ArrayList<BlockPos> getInvalidPlacements(BlockPos mapCorner, Pair<Integer, Integer> interval, Block[][] map, ArrayList<BlockPos> knownErrors, boolean countAir) {
         ArrayList<BlockPos> invalidPlacements = new ArrayList<>();
         for (int x = interval.getRight(); x >= interval.getLeft(); x--) {
             for (int z = 127; z >= 0; z--) {
@@ -369,9 +539,9 @@ public final class Utils {
                 if (knownErrors.contains(absolutePos)) continue;
                 BlockState blockState = MapAreaCache.getCachedBlockState(absolutePos);
                 Block block = blockState.getBlock();
-                if (!blockState.isAir()) {
-                    if (map[x][z] != block) invalidPlacements.add(absolutePos);
-                }
+                if (!countAir) {
+                    if (!blockState.isAir() && map[x][z] != block) invalidPlacements.add(absolutePos);
+                } else if (map[x][z] != block) invalidPlacements.add(absolutePos); 
             }
         }
         return invalidPlacements;

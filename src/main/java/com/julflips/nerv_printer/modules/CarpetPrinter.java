@@ -3,6 +3,12 @@ package com.julflips.nerv_printer.modules;
 import com.julflips.nerv_printer.Addon;
 import com.julflips.nerv_printer.interfaces.MapPrinter;
 import com.julflips.nerv_printer.utils.*;
+import java.io.File;
+import java.io.IOException;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import meteordevelopment.meteorclient.events.packets.PacketEvent;
 import meteordevelopment.meteorclient.events.render.Render3DEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
@@ -15,6 +21,7 @@ import meteordevelopment.meteorclient.gui.widgets.pressable.WButton;
 import meteordevelopment.meteorclient.renderer.ShapeMode;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Module;
+import meteordevelopment.meteorclient.utils.player.ChatUtils;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
 import meteordevelopment.meteorclient.utils.player.PlayerUtils;
 import meteordevelopment.meteorclient.utils.player.Rotations;
@@ -43,6 +50,7 @@ import net.minecraft.util.Hand;
 import net.minecraft.util.Pair;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
 import org.apache.commons.lang3.tuple.Triple;
 import org.lwjgl.util.tinyfd.TinyFileDialogs;
@@ -55,10 +63,12 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class CarpetPrinter extends Module implements MapPrinter {
+
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
     private final SettingGroup sgAdvanced = settings.createGroup("Advanced", false);
     private final SettingGroup sgMultiUser = settings.createGroup("Multi User", false);
     private final SettingGroup sgError = settings.createGroup("Error Handling");
+    private final SettingGroup sgTeleport = settings.createGroup("Teleport", false);
     private final SettingGroup sgRender = settings.createGroup("Render", false);
 
     private final Setting<Integer> linesPerRun = sgGeneral.add(new IntSetting.Builder()
@@ -101,6 +111,31 @@ public class CarpetPrinter extends Module implements MapPrinter {
         .defaultValue(50)
         .min(1)
         .sliderRange(10, 300)
+        .build()
+    );
+
+    private final Setting<Boolean> autoReplenish = sgGeneral.add(new BoolSetting.Builder()
+        .name("auto-replenish")
+        .description("Automatically replenish items when needed.")
+        .defaultValue(false)
+        .build()
+    ); 
+
+    private final Setting<Integer> autoReplenishThreshold = sgGeneral.add(new IntSetting.Builder()
+        .name("auto-replenish-threshold")
+        .description("The minimum amount of items required to trigger auto-replenishment.")
+        .defaultValue(8)
+        .min(1)
+        .max(63)
+        .sliderRange(8, 63)
+        .visible(() -> autoReplenish.get())
+        .build()
+    );
+
+    private final Setting<Boolean> renameOnEnd = sgGeneral.add(new BoolSetting.Builder()
+        .name("rename-on-end")
+        .description("Rename the map when printing is finished.")
+        .defaultValue(false)
         .build()
     );
 
@@ -290,6 +325,13 @@ public class CarpetPrinter extends Module implements MapPrinter {
         .build()
     );
 
+    private final Setting<Boolean> offsetBreak = sgAdvanced.add(new BoolSetting.Builder()
+        .name("offset-break-checkpoints")
+        .description("Offsets the break position to avoid falling as much as possible on fullblock maps.")
+        .defaultValue(false)
+        .build()
+    );
+
     private final Setting<Boolean> debugPrints = sgAdvanced.add(new BoolSetting.Builder()
         .name("debug-prints")
         .description("Prints additional information.")
@@ -318,7 +360,7 @@ public class CarpetPrinter extends Module implements MapPrinter {
     private final Setting<String> senderSuffix = sgMultiUser.add(new StringSetting.Builder()
         .name("sender-suffix")
         .description("The text that is always between the name of the sender and the actual message.")
-        .defaultValue(" whispers: ")
+        .defaultValue(" Whispers: ")
         .onChanged((value) -> SlaveSystem.senderSuffix = value)
         .build()
     );
@@ -333,6 +375,14 @@ public class CarpetPrinter extends Module implements MapPrinter {
         .build()
     );
 
+    private final Setting<Boolean> multiPcMode = sgMultiUser.add(new BoolSetting.Builder()
+        .name("multi-pc-mode")
+        .description("Master sends the NBT filename to slaves on start.")
+        .defaultValue(false)
+        .build()
+    );
+
+
     private final Setting<Integer> randomSuffix = sgMultiUser.add(new IntSetting.Builder()
         .name("random-suffix-length")
         .description("Generate a randomized suffix to circumvent anti-spam plugins.")
@@ -341,6 +391,66 @@ public class CarpetPrinter extends Module implements MapPrinter {
         .max(36)
         .sliderRange(0, 10)
         .onChanged((value) -> SlaveSystem.randomLength = value)
+        .build()
+    );
+
+    //Teleport
+
+    private final Setting<Boolean> enableTeleport = sgTeleport.add(new BoolSetting.Builder()
+        .name("enable-teleport")
+        .description("Use home commands to teleport between stations instead of walking.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<String> homeDump = sgTeleport.add(new StringSetting.Builder()
+        .name("home-dump")
+        .description("Home to teleport to the dump/restock area.")
+        .defaultValue("dump")
+        .visible(enableTeleport::get)
+        .build()
+    );
+
+    private final Setting<String> homeStart = sgTeleport.add(new StringSetting.Builder()
+        .name("home-start")
+        .description("Home to teleport to the starting lineup position.")
+        .defaultValue("start")
+        .visible(enableTeleport::get)
+        .build()
+    );
+
+
+    private final Setting<String> homeHub = sgTeleport.add(new StringSetting.Builder()
+        .name("home-hub")
+        .description("Home to teleport to the hub area with cartography table and chests.")
+        .defaultValue("hub")
+        .visible(enableTeleport::get)
+        .build()
+    );
+
+    private final Setting<String> homeMiddle = sgTeleport.add(new StringSetting.Builder()
+        .name("home-middle")
+        .description("Home to teleport to the map middle / building area.")
+        .defaultValue("middle")
+        .visible(enableTeleport::get)
+        .build()
+    );
+
+    private final Setting<Integer> teleportDelay = sgTeleport.add(new IntSetting.Builder()
+        .name("teleport-delay")
+        .description("How many ticks to wait after sending a teleport command.")
+        .defaultValue(40)
+        .min(5)
+        .sliderRange(10, 100)
+        .visible(enableTeleport::get)
+        .build()
+    );
+
+    private final Setting<String> homeWait = sgTeleport.add(new StringSetting.Builder()
+        .name("home-wait")
+        .description("Home to teleport to the waiting area.")
+        .defaultValue("middle")
+        .visible(enableTeleport::get)
         .build()
     );
 
@@ -422,13 +532,17 @@ public class CarpetPrinter extends Module implements MapPrinter {
     int timeoutTicks;
     int closeResetChestTicks;
     int interactTimeout;
+
     int toBeSwappedSlot;
     long lastTickTime;
     boolean closeNextInvPacket;
+    boolean mapVerified;
+    boolean firstStartupTeleport = true;
     State state;
     State oldState;
     State debugPreviousState;
     Pair<Integer, Integer> workingInterval;     //Interval the bot should work in 0-127
+    Pair<Integer, Integer> trueInterval;        //Stores the actual interval in case the old one is temporarily overwritten while repairing
     Pair<BlockPos, Vec3d> reset;
     Pair<BlockPos, Vec3d> cartographyTable;
     Pair<BlockPos, Vec3d> finishedMapChest;
@@ -446,13 +560,14 @@ public class CarpetPrinter extends Module implements MapPrinter {
     ArrayList<Integer> availableHotBarSlots;
     ArrayList<Triple<Item, Integer, Integer>> restockList;        //Material, Stacks, Raw Amount
     ArrayList<BlockPos> checkedChests;
-    ArrayList<Pair<Vec3d, Pair<String, BlockPos>>> checkpoints;    //(GoalPos, (checkpointAction, targetBlock))
+    ArrayList<Pair<Vec3d, Pair<String, BlockPos>>> checkpoints;   //(GoalPos, (checkpointAction, targetBlock))
     ArrayList<File> startedFiles;
     ArrayList<Integer> restockBacklogSlots;
     ArrayList<BlockPos> knownErrors;
     Block[][] map;
     File mapFolder;
     File mapFile;
+    String mapName;
 
     public CarpetPrinter() {
         super(Addon.CATEGORY, "carpet-printer", "Automatically builds 2D carpet maps from nbt files.");
@@ -490,6 +605,7 @@ public class CarpetPrinter extends Module implements MapPrinter {
         toBeSwappedSlot = -1;
         oldState = null;
         debugPreviousState = null;
+        mapVerified = false;
 
         setInterval(new Pair<>(0, 127));
         // Initialize Slave System settings
@@ -572,7 +688,7 @@ public class CarpetPrinter extends Module implements MapPrinter {
                     warning("No block selected as Start Block! Please select one in the settings.");
                 blockPos = packet.getBlockHitResult().getBlockPos();
                 BlockState blockState = MapAreaCache.getCachedBlockState(blockPos);
-                if (blockState.getBlock().equals(Blocks.CHEST)) {
+                if (blockState.getBlock().equals(Blocks.CHEST) || blockState.getBlock() instanceof ShulkerBoxBlock) {
                     tempChestPos = blockPos;
                     state = State.AwaitRegisterResponse;
                 }
@@ -677,7 +793,7 @@ public class CarpetPrinter extends Module implements MapPrinter {
                         int highestFreeSlot = Utils.findHighestFreeSlot(packet);
                         if (highestFreeSlot == -1) {
                             warning("No free slots found in inventory.");
-                            checkpoints.add(0, new Pair(dumpStation.getLeft(), new Pair("dump", null)));
+                            checkpoints.add(0, new Pair(enableTeleport.get() ? mc.player.getEntityPos() : dumpStation.getLeft(), new Pair("dump", null)));
                             state = State.Walking;
                             return;
                         }
@@ -708,6 +824,9 @@ public class CarpetPrinter extends Module implements MapPrinter {
                 mc.player.getInventory().setSelectedSlot(availableHotBarSlots.get(0));
 
                 Vec3d center = mapCorner.add(map.length / 2 - 1, 0, map[0].length / 2 - 1).toCenterPos();
+                if (enableTeleport.get()) {
+                    checkpoints.add(new Pair(mc.player.getEntityPos(), new Pair("tpMiddle", null)));
+                }
                 checkpoints.add(new Pair(center, new Pair("fillMap", null)));
                 state = State.Walking;
                 break;
@@ -740,6 +859,9 @@ public class CarpetPrinter extends Module implements MapPrinter {
                     }
                 }
                 mc.interactionManager.clickSlot(packet.syncId(), 2, 0, SlotActionType.QUICK_MOVE, mc.player);
+                if (enableTeleport.get()) {
+                    checkpoints.add(new Pair(mc.player.getEntityPos(), new Pair("tpHub", null)));
+                }
                 checkpoints.add(new Pair(finishedMapChest.getRight(), new Pair("finishedMapChest", null)));
                 state = State.Walking;
                 break;
@@ -758,6 +880,9 @@ public class CarpetPrinter extends Module implements MapPrinter {
                     if (MapAreaCache.getCachedBlockState(abovePos).getBlock() instanceof CarpetBlock) {
                         checkpoints.add(new Pair(reset.getRight(), new Pair("break", abovePos)));
                     }
+                }
+                if (enableTeleport.get()) {
+                    checkpoints.add(new Pair(mc.player.getEntityPos(), new Pair("tpHub", null)));
                 }
                 checkpoints.add(new Pair(reset.getRight(), new Pair("reset", null)));
                 state = State.Walking;
@@ -780,12 +905,17 @@ public class CarpetPrinter extends Module implements MapPrinter {
         }
 
         if (state.equals(State.AwaitMasterAllBuilt)) {
-            if (SlaveSystem.allSlavesFinished()) {
-                if (!endBuilding()) return;
-            } else {
+            if (!SlaveSystem.allSlavesFinished()) {
                 return;
             }
+            // Only verify once per map
+            if (!mapVerified) {
+                if (!endBuilding()) return;
+            }
+            // After verification, let the post-build checkpoints run
         }
+
+
 
         long timeDifference = System.currentTimeMillis() - lastTickTime;
         int allowedPlacements = (int) Math.floor(timeDifference / placeDelay.get());
@@ -803,22 +933,31 @@ public class CarpetPrinter extends Module implements MapPrinter {
             closeResetChestTicks--;
             if (closeResetChestTicks == 0) {
                 mc.player.closeHandledScreen();
-                Vec3d center = mapCorner.add(map.length / 2, 0, map[0].length / 2).toCenterPos();
-                checkpoints.add(0, new Pair(center, new Pair("awaitClear", null)));
+                if (enableTeleport.get()) {
+                    checkpoints.add(new Pair(mc.player.getEntityPos(), new Pair("awaitClear", null)));
+                } else {
+                    Vec3d center = mapCorner.add(map.length / 2, 0, map[0].length / 2).toCenterPos();
+                    checkpoints.add(0, new Pair(center, new Pair("awaitClear", null)));
+                }
                 state = State.Walking;
                 info("close reset chest");
             }
         }
 
         if (timeoutTicks > 0) {
-            if (mc.player.isOnGround()) timeoutTicks--;
+            //if (mc.player.isOnGround()) 
+            timeoutTicks--;
             Utils.setForwardPressed(false);
             return;
+        }
+        //low budget autoreplenish
+        if (autoReplenish.get() && state.equals(State.Walking) && availableHotBarSlots.size() > 0) {
+            Utils.lowBudgetAutoReplenish(autoReplenishThreshold.get(), availableHotBarSlots);
         }
 
         // Swap into Hotbar
         if (toBeSwappedSlot != -1) {
-            Utils.swapIntoHotbar(toBeSwappedSlot, availableHotBarSlots);
+            Utils.swapIntoHotbar(toBeSwappedSlot, availableHotBarSlots, map, workingInterval, linesPerRun.get(), mapCorner);
             toBeSwappedSlot = -1;
             if (postSwapDelay.get() != 0) {
                 timeoutTicks = postSwapDelay.get();
@@ -845,6 +984,7 @@ public class CarpetPrinter extends Module implements MapPrinter {
             if (MapAreaCache.getCachedBlockState(miningPos).isAir()) {
                 miningPos = null;
                 state = State.Walking;
+                //if (checkpoints.isEmpty()) calculateBuildingPath(false, true);
             } else {
                 Rotations.rotate(Rotations.getYaw(miningPos), Rotations.getPitch(miningPos), 50);
                 BlockUtils.breakBlock(miningPos, true);
@@ -897,10 +1037,26 @@ public class CarpetPrinter extends Module implements MapPrinter {
         // Main Loop for building
         if (!state.equals(State.Walking)) return;
         Utils.setForwardPressed(true);
+        // AutoJump - single jump on ground over obstacles taller than step height (0.6)
+        
+        Utils.setJumpPressed(false);
+        if (mc.player.isOnGround()) {
+            Direction direction = Direction.fromHorizontalDegrees(mc.player.getYaw());
+            BlockPos playerPos = mc.player.getBlockPos();
+            BlockPos inFront = playerPos.offset(direction);
+            boolean blockedHere = isObstacle(playerPos) && mc.player.getY() % 1.0 < 0.5 && !hasCollisionAt(playerPos.up(1)) && !hasCollisionAt(playerPos.up(2));
+            boolean blockedAhead = isObstacle(inFront) && mc.player.getY() % 1.0 < 0.5 && !hasCollisionAt(inFront.up(1)) && !hasCollisionAt(inFront.up(2));
+            if (blockedHere || blockedAhead) {
+                Utils.setJumpPressed(true);
+            }
+        }
+        
         if (checkpoints.isEmpty()) {
-            // Creating fallback checkpoint
+            if (mapVerified) return;
+            // Creating fallback checkpoint if map isnt finished
             checkpoints.add(new Pair(mc.player.getEntityPos(), new Pair<>("lineEnd", null)));
         }
+        if (checkpoints == null || checkpoints.isEmpty()) { return; }
         Vec3d goal = checkpoints.get(0).getLeft();
         if (PlayerUtils.distanceTo(goal.add(0, mc.player.getY() - goal.y, 0)) < checkpointBuffer.get()) {
             Pair<String, BlockPos> checkpointAction = checkpoints.get(0).getRight();
@@ -908,10 +1064,46 @@ public class CarpetPrinter extends Module implements MapPrinter {
                 info("Reached: §a" + checkpointAction.getLeft());
             checkpoints.remove(0);
             switch (checkpointAction.getLeft()) {
+                case "tpHub":
+                    sendHomeCommand(homeHub.get());
+                    return;
+                case "tpMiddle":
+                    sendHomeCommand(homeMiddle.get());
+                    return;
+                case "jump":
+                    if (mc.player.isOnGround()) {
+                        mc.player.jump();
+                        return;
+                    }
+                    break;
+
+                case "repairPlace": {
+                   BlockPos err = checkpointAction.getRight(); 
+                   state = State.AwaitBlockBreak; 
+                   miningPos = err;
+                   Utils.setForwardPressed(false);
+                    // Step 3: place correct block
+                    if (!tryPlacingBlock(err)) {
+                        warning("Failed to place block at " + err);
+                    }
+
+                    break;
+                }
+                case "repairBreak": {
+                    BlockPos err = checkpointAction.getRight();
+                    state = State.AwaitBlockBreak;
+                    miningPos = err;
+                    Utils.setForwardPressed(false);
+
+                    Rotations.rotate(Rotations.getYaw(err), Rotations.getPitch(err), 50);
+                    BlockUtils.breakBlock(err, true);
+                    return;
+                }
+
                 case "lineEnd":
                     boolean atCornerSide = goal.z == mapCorner.toCenterPos().z;
                     calculateBuildingPath(atCornerSide, false);
-                    ArrayList<BlockPos> newErrors = Utils.getInvalidPlacements(mapCorner, workingInterval, map, knownErrors);
+                    ArrayList<BlockPos> newErrors = Utils.getInvalidPlacements(mapCorner, workingInterval, map, knownErrors, checkpoints.isEmpty());
                     for (BlockPos errorPos : newErrors) {
                         BlockPos relativePos = errorPos.subtract(mapCorner);
                         if (logErrors.get()) {
@@ -922,19 +1114,6 @@ public class CarpetPrinter extends Module implements MapPrinter {
                                 + ". Should be: " + missingBlockString);
                         }
                     }
-                    knownErrors.addAll(newErrors);
-                    if (!knownErrors.isEmpty() && errorAction.get() == ErrorAction.Reset) {
-                        warning("ErrorAction is Reset: Resetting map because of an error...");
-                        checkpoints.clear();
-                        if (breakCarpetAboveReset.get()) {
-                            BlockPos abovePos = reset.getLeft().up();
-                            if (MapAreaCache.getCachedBlockState(abovePos).getBlock() instanceof CarpetBlock) {
-                                checkpoints.add(new Pair(reset.getRight(), new Pair("break", abovePos)));
-                            }
-                        }
-                        checkpoints.add(new Pair(reset.getRight(), new Pair("reset", null)));
-                        startedFiles.remove(mapFile);
-                    }
                     break;
                 case "mapMaterialChest":
                     BlockPos mapMaterialChest = getBestChest(Items.CARTOGRAPHY_TABLE).getLeft();
@@ -943,13 +1122,20 @@ public class CarpetPrinter extends Module implements MapPrinter {
                     return;
                 case "fillMap":
                     mc.getNetworkHandler().sendPacket(new PlayerInteractItemC2SPacket(Hand.MAIN_HAND, Utils.getNextInteractID(), mc.player.getYaw(), mc.player.getPitch()));
+                    if (renameOnEnd.get()) sendRenameCommand(mapName);
                     if (mapFillSquareSize.get() == 0) {
+                        if (enableTeleport.get()) {
+                            checkpoints.add(new Pair(mc.player.getEntityPos(), new Pair("tpHub", null)));
+                        } 
                         checkpoints.add(0, new Pair(cartographyTable.getRight(), new Pair<>("cartographyTable", null)));
                     } else {
                         checkpoints.add(new Pair(goal.add(-mapFillSquareSize.get(), 0, mapFillSquareSize.get()), new Pair("sprint", null)));
                         checkpoints.add(new Pair(goal.add(mapFillSquareSize.get(), 0, mapFillSquareSize.get()), new Pair("sprint", null)));
                         checkpoints.add(new Pair(goal.add(mapFillSquareSize.get(), 0, -mapFillSquareSize.get()), new Pair("sprint", null)));
                         checkpoints.add(new Pair(goal.add(-mapFillSquareSize.get(), 0, -mapFillSquareSize.get()), new Pair("sprint", null)));
+                        if (enableTeleport.get()) {
+                            checkpoints.add(new Pair(mc.player.getEntityPos(), new Pair("tpHub", null)));
+                        } 
                         checkpoints.add(new Pair(cartographyTable.getRight(), new Pair("cartographyTable", null)));
                     }
                     return;
@@ -970,6 +1156,10 @@ public class CarpetPrinter extends Module implements MapPrinter {
                 case "dump":
                     state = State.Dumping;
                     Utils.setForwardPressed(false);
+                    if (enableTeleport.get()) {
+                        sendHomeCommand(homeDump.get());
+                    return;
+                    }
                     mc.player.setYaw(dumpStation.getRight().getLeft());
                     mc.player.setPitch(dumpStation.getRight().getRight());
                     return;
@@ -978,6 +1168,9 @@ public class CarpetPrinter extends Module implements MapPrinter {
                     interactWithBlock(checkpointAction.getRight());
                     return;
                 case "awaitClear":
+                    if (enableTeleport.get()) {
+                        sendHomeCommand(homeWait.get());
+                    }
                     state = State.AwaitAreaClear;
                     Utils.setForwardPressed(false);
                     return;
@@ -989,8 +1182,9 @@ public class CarpetPrinter extends Module implements MapPrinter {
                     BlockUtils.breakBlock(miningPos, true);
                     return;
             }
+            // Finishing logic
             if (checkpoints.isEmpty()) {
-                if (!knownErrors.isEmpty()) {
+                if (!knownErrors.isEmpty() && SlaveSystem.isSlave()) { // we let the master handle a final map verification in case anything goes wrong
                     if (errorAction.get() == ErrorAction.ToggleOff) {
                         info("Found errors: ");
                         for (int i = knownErrors.size() - 1; i >= 0; i--) {
@@ -1002,25 +1196,36 @@ public class CarpetPrinter extends Module implements MapPrinter {
                         warning("ErrorAction is ToggleOff: Stopping because of an error...");
                         toggle();
                         return;
-                    } else if (errorAction.get() == ErrorAction.Repair) {
+                    }
+                    if (errorAction.get() == ErrorAction.Repair) {
+                        checkpoints.clear();
+                        workingInterval = new Pair<>(0, map.length - 1);
                         info("Fixing errors: ");
                         for (int i = knownErrors.size() - 1; i >= 0; i--) {
                             BlockPos errorPos = knownErrors.get(i);
                             info("Pos: " + errorPos.toShortString());
-                            checkpoints.add(new Pair(errorPos.toCenterPos(), new Pair("break", errorPos)));
+                            double offset = offsetBreak.get() ? 0.4 : 0;
+                            checkpoints.add(new Pair(errorPos.toCenterPos().add(offset, 0, offset), new Pair("break", errorPos)));
                         }
-                        checkpoints.add(new Pair(dumpStation.getLeft(), new Pair("dump", null)));
+                        //in all other cases we were ok to set the location of the checkpoint at playerpos, but here when dumping is called we are on the last
+                        //error broken, we set the position of the checkpoint there (offset by 1,0,1 to prevent it from trying to place a block on itself)
+                        checkpoints.add(new Pair(enableTeleport.get() ? knownErrors.get(0).toCenterPos().add(1, 0, 1) : dumpStation.getLeft(), new Pair("dump", null)));
                         for (int i = 0; i < knownErrors.size(); i++) {
-                            String action = (i == knownErrors.size() - 1) ? "lineEnd" : "sprint";
+                            String action = "sprint";
                             BlockPos errorPos = knownErrors.get(i);
                             checkpoints.add(new Pair(errorPos.toCenterPos(), new Pair(action, null)));
                         }
                         knownErrors.clear();
+                        state = State.Walking;
                         return;
                     }
                 }
                 if (SlaveSystem.isSlave()) {
+                    firstStartupTeleport = true;
                     SlaveSystem.queueMasterDM("finished");
+                    if (enableTeleport.get()) {
+                        sendHomeCommand(homeDump.get());
+                    }
                     state = State.AwaitSlaveNextMap;
                     Utils.setForwardPressed(false);
                     return;
@@ -1034,9 +1239,11 @@ public class CarpetPrinter extends Module implements MapPrinter {
                     return;
                 }
             }
+            //if (checkpoints == null || checkpoints.isEmpty()) { return; }
             goal = checkpoints.get(0).getLeft();
         }
         mc.player.setYaw((float) Rotations.getYaw(goal));
+        //if (checkpoints == null || checkpoints.isEmpty()) { return; }
         String nextAction = checkpoints.get(0).getRight().getLeft();
 
         if ((nextAction == "" || nextAction == "lineEnd") && sprinting.get() != SprintMode.Always) {
@@ -1126,7 +1333,13 @@ public class CarpetPrinter extends Module implements MapPrinter {
 
     private void addClosestRestockCheckpoint() {
         //Determine closest restock chest for material in restock list
-        if (restockList.isEmpty()) return;
+        if (restockList.isEmpty()) {
+            //this only ever happens when dumping while fixing errors or after finishing the map, so were safe not accounting for startupteleport
+            if (enableTeleport.get() && !mapVerified) {
+                sendBackCommand();
+            }
+            return;
+        }
         double smallestDistance = Double.MAX_VALUE;
         Triple<Item, Integer, Integer> closestEntry = null;
         Pair<BlockPos, Vec3d> restockPos = null;
@@ -1147,6 +1360,7 @@ public class CarpetPrinter extends Module implements MapPrinter {
     }
 
     private void endRestocking() {
+        boolean finishedAll = false;
         if (restockList.get(0).getMiddle() > 0) {
             warning("Not all necessary stacks restocked. Searching for another chest...");
             //Search for the next best chest
@@ -1172,15 +1386,81 @@ public class CarpetPrinter extends Module implements MapPrinter {
         } else {
             checkedChests.clear();
             restockList.remove(0);
-            addClosestRestockCheckpoint();
+
+            if (restockList.isEmpty()) {
+                finishedAll = true;
+            } else {
+                addClosestRestockCheckpoint();
+            }
         }
+        
         timeoutTicks = postRestockDelay.get();
         state = State.Walking;
+        if (firstStartupTeleport && finishedAll && enableTeleport.get()) {
+            sendHomeCommand(homeStart.get());
+            firstStartupTeleport = false;
+        } else if (finishedAll && enableTeleport.get()) {
+            sendBackCommand();
+        } 
+    }
+
+    private boolean hasCollisionAt(BlockPos pos) {
+        return !mc.world.getBlockState(pos).getCollisionShape(mc.world, pos).isEmpty();
+    }
+
+    private boolean isObstacle(BlockPos pos) {
+        var shape = mc.world.getBlockState(pos).getCollisionShape(mc.world, pos);
+        return !shape.isEmpty() && shape.getMax(Direction.Axis.Y) > 0.5;
     }
 
     // Block Interactions
 
+    private void sendHomeCommand(String home) {
+        if (home != null && !home.isEmpty()) {
+            ChatUtils.sendPlayerMsg("/home " + home);
+        }
+        timeoutTicks = teleportDelay.get();
+        Utils.setForwardPressed(false);
+    }
+
+    private void sendBackCommand() {
+        ChatUtils.sendPlayerMsg("/back");
+        timeoutTicks = teleportDelay.get();
+        Utils.setForwardPressed(false);
+    }
+
+    private void sendRenameCommand(String name) {
+        ChatUtils.sendPlayerMsg("/rename " + name);
+        Utils.setForwardPressed(false);
+    }
+
     private void interactWithBlock(BlockPos blockPos) {
+        //Ensure selected hotbar slot is empty before interacting with a block to prevent accidental block placements
+        ItemStack held = mc.player.getInventory().getSelectedStack();
+        if (!held.isEmpty()) {
+            int emptyHotbar = -1;
+            for (int i = 0; i < 9; i++) {
+                if (mc.player.getInventory().getStack(i).isEmpty()) {
+                    emptyHotbar = i;
+                    break;
+                }
+            }
+            if (emptyHotbar != -1) {
+                mc.player.getInventory().setSelectedSlot(emptyHotbar);
+            } else {
+                int emptyInvSlot = -1;
+                for (int i = 9; i < 36; i++) {
+                    if (mc.player.getInventory().getStack(i).isEmpty()) {
+                        emptyInvSlot = i;
+                        break;
+                    }
+                }
+                if (emptyInvSlot != -1) {
+                    InvUtils.move().from(mc.player.getInventory().getSelectedSlot()).to(emptyInvSlot);
+                }
+            }
+        }
+
         Utils.setForwardPressed(false);
         mc.player.setVelocity(0, 0, 0);
         mc.player.setYaw((float) Rotations.getYaw(blockPos.toCenterPos()));
@@ -1222,7 +1502,8 @@ public class CarpetPrinter extends Module implements MapPrinter {
         if (lastSwappedMaterial == material) return false;      //Wait for swapped material
         info("No " + material.getName().getString() + " found in inventory. Resetting...");
         checkpoints.add(0, new Pair(mc.player.getEntityPos(), new Pair("sprint", null)));
-        checkpoints.add(0, new Pair(dumpStation.getLeft(), new Pair("dump", null)));
+        checkpoints.add(0, new Pair(enableTeleport.get() ? mc.player.getEntityPos() : dumpStation.getLeft(), new Pair("dump", null))
+);
         return false;
     }
 
@@ -1268,23 +1549,62 @@ public class CarpetPrinter extends Module implements MapPrinter {
     }
 
     private void startBuilding() {
+        mapVerified = false;
         if (!SlaveSystem.isSlave()) SlaveSystem.startAllSlaves();
         if (availableSlots.isEmpty()) setupSlots();
         MapAreaCache.reset(mapCorner);
         calculateBuildingPath(northToSouth.get(), true);
-        checkpoints.add(0, new Pair(dumpStation.getLeft(), new Pair("dump", null)));
+        checkpoints.add(0, new Pair(enableTeleport.get() ? mc.player.getEntityPos() : dumpStation.getLeft(), new Pair("dump", null)));
         state = State.Walking;
     }
 
     private boolean endBuilding() {
+        // Final full-map verification pass (yes, we check the whole map again, verification after finishing can lead to client side undetected errors)
+        knownErrors = Utils.getInvalidPlacements(mapCorner, new Pair<>(0, map.length - 1), map, new ArrayList<>(), true);
+        if (!knownErrors.isEmpty()) {
+            if (errorAction.get() == ErrorAction.ToggleOff) {
+                workingInterval = new Pair<>(0, map.length - 1);
+                info("Found errors: ");
+                for (int i = knownErrors.size() - 1; i >= 0; i--) {
+                    info("Pos: " + knownErrors.get(i).toShortString());
+                }
+                knownErrors.clear();
+                checkpoints.add(new Pair(mc.player.getEntityPos(), new Pair("lineEnd", null)));
+                state = State.Walking;
+                warning("ErrorAction is ToggleOff: Stopping because of an error...");
+                toggle();
+                return false;
+            }
+            if (errorAction.get() == ErrorAction.Repair) {
+                checkpoints.clear();
+                workingInterval = new Pair<>(0, map.length - 1);
+                info("Fixing errors: ");
+                for (int i = knownErrors.size() - 1; i >= 0; i--) {
+                    BlockPos errorPos = knownErrors.get(i);
+                    info("Pos: " + errorPos.toShortString());
+                    double offset = offsetBreak.get() ? 0.4 : 0;
+                    checkpoints.add(new Pair(errorPos.toCenterPos().add(offset, 0, offset), new Pair("break", errorPos)));
+                }
+                //in all other cases we were ok to set the location of the checkpoint at playerpos, but here when dumping is called we are on the last
+                //error broken, we set the position of the checkpoint there (offset by 1,0,1 to prevent it from trying to place a block on itself)
+                checkpoints.add(new Pair(enableTeleport.get() ? knownErrors.get(0).toCenterPos().add(1, 0, 1) : dumpStation.getLeft(), new Pair("dump", null)));
+                for (int i = 0; i < knownErrors.size(); i++) {
+                    String action = "sprint";
+                    BlockPos errorPos = knownErrors.get(i);
+                    checkpoints.add(new Pair(errorPos.toCenterPos(), new Pair(action, null)));
+                }
+                firstStartupTeleport = true;
+                state = State.Walking;
+                return true;
+            }
+        }
+        firstStartupTeleport = true;
         info("Finished building map");
         state = State.Walking;
         knownErrors.clear();
         SlaveSystem.setAllSlavesUnfinished();
         Pair<BlockPos, Vec3d> bestChest = getBestChest(Items.CARTOGRAPHY_TABLE);
         if (bestChest == null) return false;
-        checkpoints.add(new Pair(dumpStation.getLeft(), new Pair("dump", null)));
-        checkpoints.add(new Pair(bestChest.getRight(), new Pair("mapMaterialChest", bestChest.getLeft())));
         try {
             if (moveToFinishedFolder.get())
                 mapFile.renameTo(new File(mapFile.getParentFile().getAbsolutePath() + File.separator + "_finished_maps" + File.separator + mapFile.getName()));
@@ -1292,6 +1612,21 @@ public class CarpetPrinter extends Module implements MapPrinter {
             warning("Failed to move map file " + mapFile.getName() + " to finished map folder");
             e.printStackTrace();
         }
+        mapVerified = true;
+        checkpoints.clear();
+        checkpoints.add(new Pair<>(
+            enableTeleport.get() ? mc.player.getEntityPos() : dumpStation.getLeft(),
+            new Pair<>("dump", null)
+        ));
+        if (enableTeleport.get()) {
+            checkpoints.add(new Pair<>(dumpStation.getLeft(), new Pair<>("tpHub", null)));
+        }
+        checkpoints.add(new Pair<>(
+            bestChest.getRight(),
+            new Pair<>("mapMaterialChest", bestChest.getLeft())
+        ));
+
+        state = State.Walking;
         return true;
     }
 
@@ -1362,6 +1697,17 @@ public class CarpetPrinter extends Module implements MapPrinter {
         return activationReset.get();
     }
 
+    @Override
+    public boolean getMultiPcMode() {
+        return multiPcMode.get();
+    }
+
+    @Override
+    public String getCurrentMapFileName() {
+        return mapFile != null ? mapFile.getName() : null;
+    }
+
+
     public void skipBuilding() {
     }
 
@@ -1381,6 +1727,12 @@ public class CarpetPrinter extends Module implements MapPrinter {
     }
 
     // Config System
+    private File getAutoSaveFile() {
+        if (mapFolder == null) return null;
+        File configFolder = new File(mapFolder, "_configs");
+        if (!configFolder.exists()) configFolder.mkdirs();
+        return new File(configFolder, "carpet-autosave.json");
+    }
 
     private void saveConfig(File configFile) {
         if (configFile == null) {
@@ -1489,8 +1841,29 @@ public class CarpetPrinter extends Module implements MapPrinter {
         return true;
     }
 
+    @Override
+    public void startWithFile(String fileName) {
+        if (state.equals(State.AwaitSlaveContinue)) {
+            state = oldState;
+            return;
+        }
+        File f = new File(mapFolder, fileName);
+        if (!f.exists()) {
+            warning("Master requested file '" + fileName + "' but it does not exist.");
+            return;
+        }
+        this.mapFile = f;
+        if (!loadNBTFile()) {
+            warning("Failed to load nbt file '" + fileName + "'.");
+            return;
+        }
+        startBuilding();
+    }
+
+
     private boolean loadNBTFile() {
         try {
+            mapName = mapFile.getName().substring(0, mapFile.getName().lastIndexOf('.'));
             info("Building: §a" + mapFile.getName());
             NbtSizeTracker sizeTracker = new NbtSizeTracker(0x20000000L, 100);
             NbtCompound nbt = NbtIo.readCompressed(mapFile.toPath(), sizeTracker);

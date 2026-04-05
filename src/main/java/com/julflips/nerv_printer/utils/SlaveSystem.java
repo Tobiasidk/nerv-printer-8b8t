@@ -87,9 +87,19 @@ public final class SlaveSystem {
     }
 
     public static void startAllSlaves() {
+        String fileName = null;
+
+        if (printerModule != null && printerModule.getMultiPcMode()) {
+            fileName = printerModule.getCurrentMapFileName();
+        }
+
         for (String slave : activeSlavesDict.keySet()) {
             if (!activeSlavesDict.get(slave)) {
-                queueDM(slave, "start");
+                if (fileName != null) {
+                    queueDM(slave, "start:" + fileName);
+                } else {
+                    queueDM(slave, "start");
+                }
                 activeSlavesDict.put(slave, true);
             }
         }
@@ -114,13 +124,13 @@ public final class SlaveSystem {
     public static void generateIntervals() {
         int sectionSize = (int) Math.ceil((float) 128 / (float) (slaves.size() + 1));
         ArrayList<Pair<Integer, Integer>> intervals = new ArrayList<>();
-        for (int end = 127; end >= 0; end -= sectionSize) {
+        for (int end = 127; end >= 0 ; end -= sectionSize) {
             int start = Math.max(0, end - sectionSize + 1);
             intervals.add(new Pair<>(start, end));
         }
         Collections.reverse(intervals);
 
-        printerModule.setInterval(intervals.remove((intervals.size() - 1) / 2));
+        printerModule.setInterval(intervals.remove((intervals.size() - 1 ) / 2));
 
         // Remove all previously queued interval messages
         ArrayList<String> toBeRemoved = new ArrayList<>();
@@ -128,9 +138,13 @@ public final class SlaveSystem {
             if (message.contains("interval")) toBeRemoved.add(message);
         }
         toBeRemoved.forEach((message) -> toBeSentMessages.remove(message));
+        // Sort slaves deterministically
+        ArrayList<String> sortedSlaves = new ArrayList<>(slaves);
+        Collections.sort(sortedSlaves, String.CASE_INSENSITIVE_ORDER);
+
 
         for (int i = 0; i < intervals.size(); i++) {
-            String slave = slaves.get(i);
+            String slave = sortedSlaves.get(i);
             SlaveSystem.queueDM(slave, "interval:" + intervals.get(i).getLeft() + ":" + intervals.get(i).getRight());
         }
     }
@@ -165,7 +179,7 @@ public final class SlaveSystem {
     }
 
     public static boolean canSeePlayer(String playerName) {
-        for (Entity entity : mc.world.getEntities()) {
+        for(Entity entity : mc.world.getEntities()) {
             if (entity instanceof PlayerEntity player && player.getName().getString().equals(playerName)) {
                 return true;
             }
@@ -208,7 +222,11 @@ public final class SlaveSystem {
                     printerModule.pause();
                     break;
                 case "start":
-                    printerModule.start();
+                    if (colonSplit.length >= 2) {
+                        printerModule.startWithFile(colonSplit[1]);
+                    } else {
+                        printerModule.start();
+                    }
                     break;
                 case "remove":
                     master = null;

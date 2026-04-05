@@ -342,6 +342,13 @@ public class StaircasedPrinter extends Module implements MapPrinter {
         .build()
     );
 
+    private final Setting<Boolean> multiPcMode = sgMultiUser.add(new BoolSetting.Builder()
+        .name("multi-pc-mode")
+        .description("Master sends the NBT filename to slaves on start.")
+        .defaultValue(false)
+        .build()
+    );
+
     private final Setting<Integer> randomSuffix = sgMultiUser.add(new IntSetting.Builder()
         .name("random-suffix-length")
         .description("Generate a randomized suffix to circumvent anti-spam plugins.")
@@ -933,7 +940,7 @@ public class StaircasedPrinter extends Module implements MapPrinter {
 
         // Swap into Hotbar
         if (toBeSwappedSlot != -1) {
-            Utils.swapIntoHotbar(toBeSwappedSlot, availableHotBarSlots);
+            Utils.swapIntoHotbar(toBeSwappedSlot, availableHotBarSlots, map, workingInterval, 1, mapCorner);
             toBeSwappedSlot = -1;
             if (postSwapDelay.get() != 0) {
                 timeoutTicks = postSwapDelay.get();
@@ -2000,6 +2007,35 @@ public class StaircasedPrinter extends Module implements MapPrinter {
         } else {
             return "None";
         }
+    }
+
+        @Override
+    public String getCurrentMapFileName() {
+        return mapFile != null ? mapFile.getName() : null;
+    }
+
+    @Override
+    public void startWithFile(String fileName) {
+        if (state.equals(State.AwaitSlaveContinue)) {
+            state = oldState;
+            return;
+        }
+        File f = new File(mapFolder, fileName);
+        if (!f.exists()) {
+            warning("Master requested file '" + fileName + "' but it does not exist.");
+            return;
+        }
+        this.mapFile = f;
+        if (!loadNBTFile()) {
+            warning("Failed to load nbt file '" + fileName + "'.");
+            return;
+        }
+        startBuilding();
+    }
+
+    @Override
+    public boolean getMultiPcMode() {
+        return multiPcMode.get();
     }
 
     @EventHandler

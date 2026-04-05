@@ -927,7 +927,7 @@ public class FullBlockPrinter extends Module {
 
         // Swap into Hotbar
         if (toBeSwappedSlot != -1) {
-            Utils.swapIntoHotbar(toBeSwappedSlot, availableHotBarSlots);
+            Utils.swapIntoHotbar(toBeSwappedSlot, availableHotBarSlots, map, workingInterval, linesPerRun.get(), mapCorner);
             toBeSwappedSlot = -1;
             if (postSwapDelay.get() != 0) {
                 timeoutTicks = postSwapDelay.get();

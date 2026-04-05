@@ -1,6 +1,7 @@
 package com.julflips.nerv_printer;
 
 import com.julflips.nerv_printer.modules.CarpetPrinter;
+import com.julflips.nerv_printer.modules.EightBUtils;
 import com.julflips.nerv_printer.modules.FullBlockPrinter;
 import com.julflips.nerv_printer.modules.MapNamer;
 import com.julflips.nerv_printer.modules.StaircasedPrinter;
@@ -31,6 +32,8 @@ public class Addon extends MeteorAddon {
         Modules.get().add(new FullBlockPrinter());
         Modules.get().add(new StaircasedPrinter());
         Modules.get().add(new MapNamer());
+        Modules.get().add(new EightBUtils());
+
     }
 
     @Override

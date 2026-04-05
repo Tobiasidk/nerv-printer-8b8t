@@ -4,7 +4,7 @@ import meteordevelopment.meteorclient.utils.world.BlockUtils;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.CartographyTableBlock;
-import net.minecraft.client.network.ServerInfo;
+import net.minecraft.state.property.IntProperty;
 import net.minecraft.util.Pair;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Direction;
@@ -18,7 +18,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
 
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 import static meteordevelopment.meteorclient.utils.world.BlockUtils.isClickable;
@@ -43,6 +42,28 @@ public class BlockUtilsMixin {
 
             // Check if neighbour isn't empty
             if (state.isAir() || isClickable(state.getBlock())) continue;
+
+            // Generic multi-count block check (for candles, petals, etc.)
+            boolean skip = false;
+            for (var prop : state.getProperties()) {
+                if (prop instanceof IntProperty intProp) {
+                    int min = intProp.getValues().stream().min(Integer::compareTo).orElse(0);
+                    int max = intProp.getValues().stream().max(Integer::compareTo).orElse(0);
+                    int current = state.get(intProp);
+
+                    // Detects blocks like candles, petals, pickles, etc.
+                    if (min == 1 && max > 1) {
+                        if (current < max) {
+                            skip = true; // treat as replaceable
+                        }
+                        break;
+                    }
+                }
+            }
+            if (skip) continue;
+
+            // Check if neighbour is replaceable (like resin clumps)
+            if (state.isReplaceable()) continue;
 
             // Check if neighbour is a fluid
             if (!state.getFluidState().isEmpty()) continue;
