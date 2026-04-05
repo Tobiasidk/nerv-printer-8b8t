@@ -111,6 +111,7 @@ Minimal but necessary changes to ensure full compatibility with the new systems.
 ## Original Documentation
 
 All original Nerv Printer documentation still applies:
+(Some changes were made to the Carpet Printer documentation to show its new capabilities)
 
 - **Carpet Printer** — [Documentation/CarpetGuide.md](Documentation/CarpetGuide.md)  
 - **Staircased Printer** — [Documentation/StaircasedGuide.md](Documentation/StaircasedGuide.md)  
@@ -121,4 +122,6 @@ All original Nerv Printer documentation still applies:
 All credit for the original Nerv Printer goes to **Julflips** and contributors.  
 This fork builds on their work to provide a more robust experience for 8b8t and similar servers.
 
-
+<div align="center">
+  <img src="Documentation/Gallery/TheSwordOfOrion.png">
+</div>
