@@ -1,69 +1,124 @@
 
 <div align="center">
-  <!-- Logo and Title -->
   <img src="/src/main/resources/assets/nerv/icon.png" alt="logo" width="20%"/>
-  <h1>Nerv Printer</h1>
-  <p>Nerv Printer is an addon for the Meteor Client allowing you to build mapart from NBT files. It works 100% autonomously and supports both carpet, fullblock, and staircasing. Its main focus is reliability and compatibility with strict anti-cheat servers.</p>
+  <h1>Nerv Printer — 8b8t Fork</h1>
+  <p>
+    A fork of the original Nerv Printer addon for Meteor Client,  
+    optimized specifically for 8b8t.  
+    Includes reliability improvements, new features, and workflow upgrades.
+  </p>
 
   <!-- Shields -->
-[![Release](https://img.shields.io/github/v/release/Julflips/nerv-printer-addon)](https://github.com/Julflips/nerv-printer-addon/releases)
-[![Last Commit](https://img.shields.io/github/last-commit/Julflips/nerv-printer-addon)](https://github.com/Julflips/nerv-printer-addon/commits)
-[![Issues](https://img.shields.io/github/issues/Julflips/nerv-printer-addon)](https://github.com/Julflips/nerv-printer-addon/issues)
-[![Downloads](https://img.shields.io/github/downloads/Julflips/nerv-printer-addon/total)](https://github.com/Julflips/nerv-printer-addon/releases)
-[![Stars](https://img.shields.io/github/stars/Julflips/nerv-printer-addon)](https://github.com/Julflips/nerv-printer-addon/stargazers)
+  <a href="https://github.com/Tobiasidk/nerv-printer-8b8t/releases">
+    <img src="https://img.shields.io/github/v/release/Tobiasidk/nerv-printer-8b8t" />
+  </a>
+  <a href="https://github.com/Tobiasidk/nerv-printer-8b8t/commits">
+    <img src="https://img.shields.io/github/last-commit/Tobiasidk/nerv-printer-8b8t" />
+  </a>
+  <a href="https://github.com/Tobiasidk/nerv-printer-8b8t/issues">
+    <img src="https://img.shields.io/github/issues/Tobiasidk/nerv-printer-8b8t" />
+  </a>
+  <a href="https://github.com/Tobiasidk/nerv-printer-8b8t/stargazers">
+    <img src="https://img.shields.io/github/stars/Tobiasidk/nerv-printer-8b8t" />
+  </a>
 </div>
 
-## Carpet Printer
-The Carpet Printer prints the map line-by-line and does not reuse carpet items, making it only suited for servers where carpet duping is enabled. You can find the full documentation [here](Documentation/CarpetGuide.md).
+---
 
-## Staircased Printer
-The Staircased Printer builds arbitrary staircased fullblock maps line by line.
-The bot mines all placed blocks again to recycle all used materials and feeds them into an item sorter.
-This module **will not work on servers where placing blocks in the air is disabled**.
-You can find the full documentation [here](Documentation/StaircasedGuide.md).
+## About This Fork
 
-## Fullblock Flat Printer (not supported)
-The Fullblock Printer utilizes a TNT-bomber and a large item sorter to reuse most materials used to build the map. However, it is only compatible with servers where TNT duplication is enabled. You can find the full documentation [here](Documentation/FullblockGuide.md).
+This fork of **Nerv Printer** focuses on **8b8t compatibility**, **mapart production time**.  
+It keeps full compatibility with the original workflow while introducing numerous improvements that make printing faster, safer, and more reliable on high‑lag (because that's most of the time on 8b8t).
 
-This module is not updated anymore. We recommend using the staircased printer even for flat maps instead.
+These improvements make Piston-Clearable maps as easy to make as Carpet maps, and Flat Fullblock maps are equally as possible to make with minimal setting changes.
 
-## Map Namer
-Semi-automatically names unnamed map items in inventory. Pauses on anvil break and insufficient xp and can be resumed.
-
-[![Map Namer](https://img.youtube.com/vi/3karXgUGU8U/0.jpg)](https://www.youtube.com/watch?v=3karXgUGU8U)
-
-## Verified on Servers
-- Contantiam (Folia with Grim anti-cheat)
-- 6b6t
+This fork is fully compatible with:
 - 8b8t
-- 9b9t
-- EndCrystal
-- MineTexas
-- 2B2FR
-- FBFT
+- Any server with `/home` + `/back` systems
 
-## Mapart Gallery
-A collection of maps printed with this addon:
+---
 
-<div style="overflow-x: auto; white-space: nowrap;">
+## Improvements in This Fork
 
-  <img src="Documentation/Gallery/TheObservatory.png" alt="The Observatory" height="200">
-  <img src="Documentation/Gallery/02.png" alt="02" height="200">
-  <img src="Documentation/Gallery/TarotCards.png" alt="Tarot Cards" height="200">
-  <img src="Documentation/Gallery/IdiotSandwich.png" alt="Idiot Sandwich" height="200">
-  <img src="Documentation/Gallery/WelcomeToHell.png" alt="Welcome To Hell" height="200">
-  <img src="Documentation/Gallery/AsukaCollage.png" alt="Asuka Collage" height="200">
-  <img src="Documentation/Gallery/CC&Lelouch.png" alt="CC & Lelouch" height="200">
-  <img src="Documentation/Gallery/HoloAtDawn.png" alt="Holo At Dawn" height="200">
-  <img src="Documentation/Gallery/JulflipsMazeGame.png" alt="Juflips Maze Game" height="200">
-  <img src="Documentation/Gallery/MakimasEyes.png" alt="Makima's Eyes" height="200">
-  <img src="Documentation/Gallery/MapOfJapan.png" alt="Map Of Japan" height="200">
-  <img src="Documentation/Gallery/MeAndTheBoysInTheEnd.png" alt="Me And The Boys In The End" height="200">
-  <img src="Documentation/Gallery/Money.png" alt="Money" height="200">
-  <img src="Documentation/Gallery/Nosferatu.png" alt="Nosferatu" height="200">
-  <img src="Documentation/Gallery/Restraint.png" alt="Restraint" height="200">
-  <img src="Documentation/Gallery/TheFirstDate.png" alt="The First Date" height="200">
-  <img src="Documentation/Gallery/Toradora!.png" alt="Toradora!" height="200">
-  <img src="Documentation/Gallery/BigOwO.png" height="200">
+### **Better Error Detection & Verification**
+- Missing blocks caused by lag/ghost blocks are now detected as errors.
+- Master performs a **full map verification** before finishing, preventing corrupted prints.
 
-</div>
+### **Multi‑PC Mode**
+Allows two players on different computers to share the same printing platform and workflow.  
+(Current implementation works reliably; will be refined later.)
+
+### **Deterministic Slave Ordering**
+Slaves always work on the same slice, improving predictability and allowing fixed `/home` start positions.
+
+### **Budget Auto‑Replenish**
+A custom replenisher that:
+- Works better than Meteor’s built‑in one  
+- Outperforms IPN  
+- Avoids unnecessary swaps and inventory thrashing
+
+### **Optimal Hotbar Swapping**
+A mathematically optimal swap algorithm:
+- Predicts future block usage  
+- Minimizes total swaps  
+- Reduces wasted time  
+- Works for both Carpet and Staircased printers  
+- Includes a generic T‑cell extractor for Staircased compatibility (the extractor was vibecoded)
+
+### **Shulker‑Compatible Restocking**
+Restock logic now supports:
+- Shulker unloaders  
+- Mixed chest/shulker systems  
+- Complex sorter setups
+
+### **Safe Block Interactions**
+Ensures the bot **always interacts with an empty hand**, preventing accidental block placement inside:
+- Shulker unloaders  
+- Sorters  
+- Redstone components
+
+### **8bUtils Module**
+A small utility module tailored for 8b8t.  
+(One of its utilities will be integrated into SlaveSystem later.)
+
+### **Full 8b8t `/home` System Integration**
+Bots automatically navigate using:
+- `/home start`
+- `/home dump`
+- `/home hub`
+- `/home middle`
+- `/back`
+
+Works flawlessly on 8b8t; may require adjustments for other servers.
+
+### **Automatic Map Renaming**
+Uses `/rename` to rename finished maps automatically.
+
+### **BlockUtilsMixin Improvements**
+Prevents placing blocks on:
+- Replaceable blocks (resin clumps, roots, etc.)
+- Multi‑count blocks (candles, wildflowers)
+Improves compatibility with piston‑clearable maps.
+
+### **Autojump for Piston‑Clearable Maps**
+Adds a custom autojump layer (requires vanilla autojump enabled).
+
+### **Staircased Printer Compatibility Fixes**
+Minimal but necessary changes to ensure full compatibility with the new systems.
+
+---
+
+## Original Documentation
+
+All original Nerv Printer documentation still applies:
+
+- **Carpet Printer** — [Documentation/CarpetGuide.md](Documentation/CarpetGuide.md)  
+- **Staircased Printer** — [Documentation/StaircasedGuide.md](Documentation/StaircasedGuide.md)  
+- **Fullblock Printer (deprecated)** — [Documentation/FullblockGuide.md](Documentation/FullblockGuide.md)
+
+## Credits
+
+All credit for the original Nerv Printer goes to **Julflips** and contributors.  
+This fork builds on their work to provide a more robust experience for 8b8t and similar servers.
+
+
