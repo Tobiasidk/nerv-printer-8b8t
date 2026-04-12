@@ -132,6 +132,13 @@ public class CarpetPrinter extends Module implements MapPrinter {
         .build()
     );
 
+    private final Setting<Boolean> shulkerUnloaderMode = sgGeneral.add(new BoolSetting.Builder()
+        .name("shulker-unloader-mode")
+        .description("Changes the logic when any stray item is found inside the chest or shulker.")
+        .defaultValue(false)
+        .build()
+    );
+
     private final Setting<Boolean> renameOnEnd = sgGeneral.add(new BoolSetting.Builder()
         .name("rename-on-end")
         .description("Rename the map when printing is finished.")
@@ -787,7 +794,8 @@ public class CarpetPrinter extends Module implements MapPrinter {
                         foundMaterials = true;
                         break;
                     }
-                    if (!stack.isEmpty() && stack.getCount() == 64) {
+                    int amount = stack.getCount();
+                    if (!stack.isEmpty() && amount == 64 && stack.getItem() == restockList.get(0).getLeft()) {
                         //info("Taking Stack of " + restockList.get(0).getLeft().getName().getString());
                         foundMaterials = true;
                         int highestFreeSlot = Utils.findHighestFreeSlot(packet);
@@ -800,7 +808,16 @@ public class CarpetPrinter extends Module implements MapPrinter {
                         restockBacklogSlots.add(slot);
                         Triple<Item, Integer, Integer> oldTriple = restockList.remove(0);
                         restockList.add(0, Triple.of(oldTriple.getLeft(), oldTriple.getMiddle() - 1, oldTriple.getRight() - 64));
-                    }
+                    } else if (!stack.isEmpty() && stack.getItem() == restockList.get(0).getLeft()) {
+                        if (shulkerUnloaderMode.get()) {
+                            for (int i = 0; i < amount; i++) {
+                                mc.interactionManager.clickSlot(packet.syncId(), slot, 0, SlotActionType.THROW, mc.player);
+                            }
+                        }
+                    } else if (!stack.isEmpty()) 
+                        for (int i = 0; i < amount; i++) {
+                            mc.interactionManager.clickSlot(packet.syncId(), slot, 0, SlotActionType.THROW, mc.player);
+                        }
                 }
                 if (!foundMaterials) endRestocking();
                 break;
@@ -1103,17 +1120,6 @@ public class CarpetPrinter extends Module implements MapPrinter {
                 case "lineEnd":
                     boolean atCornerSide = goal.z == mapCorner.toCenterPos().z;
                     calculateBuildingPath(atCornerSide, false);
-                    ArrayList<BlockPos> newErrors = Utils.getInvalidPlacements(mapCorner, workingInterval, map, knownErrors, checkpoints.isEmpty());
-                    for (BlockPos errorPos : newErrors) {
-                        BlockPos relativePos = errorPos.subtract(mapCorner);
-                        if (logErrors.get()) {
-                            Block missingBlock = map[relativePos.getX()][relativePos.getZ()];
-                            String missingBlockString = missingBlock == null ? "empty" : missingBlock.getName().getString();
-                            info("Error at: " + errorPos.toShortString() + ". Is: "
-                                + MapAreaCache.getCachedBlockState(errorPos).getBlock().getName().getString()
-                                + ". Should be: " + missingBlockString);
-                        }
-                    }
                     break;
                 case "mapMaterialChest":
                     BlockPos mapMaterialChest = getBestChest(Items.CARTOGRAPHY_TABLE).getLeft();
@@ -1184,7 +1190,18 @@ public class CarpetPrinter extends Module implements MapPrinter {
             }
             // Finishing logic
             if (checkpoints.isEmpty()) {
-                if (!knownErrors.isEmpty() && SlaveSystem.isSlave()) { // we let the master handle a final map verification in case anything goes wrong
+                knownErrors = Utils.getInvalidPlacements(mapCorner, workingInterval, map, knownErrors);
+                if (!knownErrors.isEmpty()) {
+                    for (BlockPos errorPos : knownErrors) {
+                        BlockPos relativePos = errorPos.subtract(mapCorner);
+                        if (logErrors.get()) {
+                            Block missingBlock = map[relativePos.getX()][relativePos.getZ()];
+                            String missingBlockString = missingBlock == null ? "empty" : missingBlock.getName().getString();
+                            info("Error at: " + errorPos.toShortString() + ". Is: "
+                                + MapAreaCache.getCachedBlockState(errorPos).getBlock().getName().getString()
+                                + ". Should be: " + missingBlockString);
+                        }
+                    }
                     if (errorAction.get() == ErrorAction.ToggleOff) {
                         info("Found errors: ");
                         for (int i = knownErrors.size() - 1; i >= 0; i--) {
@@ -1199,7 +1216,6 @@ public class CarpetPrinter extends Module implements MapPrinter {
                     }
                     if (errorAction.get() == ErrorAction.Repair) {
                         checkpoints.clear();
-                        workingInterval = new Pair<>(0, map.length - 1);
                         info("Fixing errors: ");
                         for (int i = knownErrors.size() - 1; i >= 0; i--) {
                             BlockPos errorPos = knownErrors.get(i);
@@ -1560,10 +1576,9 @@ public class CarpetPrinter extends Module implements MapPrinter {
 
     private boolean endBuilding() {
         // Final full-map verification pass (yes, we check the whole map again, verification after finishing can lead to client side undetected errors)
-        knownErrors = Utils.getInvalidPlacements(mapCorner, new Pair<>(0, map.length - 1), map, new ArrayList<>(), true);
+        knownErrors = Utils.getInvalidPlacements(mapCorner, new Pair<>(0, map.length - 1), map, new ArrayList<>());
         if (!knownErrors.isEmpty()) {
             if (errorAction.get() == ErrorAction.ToggleOff) {
-                workingInterval = new Pair<>(0, map.length - 1);
                 info("Found errors: ");
                 for (int i = knownErrors.size() - 1; i >= 0; i--) {
                     info("Pos: " + knownErrors.get(i).toShortString());
@@ -1577,7 +1592,6 @@ public class CarpetPrinter extends Module implements MapPrinter {
             }
             if (errorAction.get() == ErrorAction.Repair) {
                 checkpoints.clear();
-                workingInterval = new Pair<>(0, map.length - 1);
                 info("Fixing errors: ");
                 for (int i = knownErrors.size() - 1; i >= 0; i--) {
                     BlockPos errorPos = knownErrors.get(i);

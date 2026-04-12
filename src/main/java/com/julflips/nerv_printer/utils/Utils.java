@@ -530,7 +530,7 @@ public final class Utils {
         return map;
     }
 
-    public static ArrayList<BlockPos> getInvalidPlacements(BlockPos mapCorner, Pair<Integer, Integer> interval, Block[][] map, ArrayList<BlockPos> knownErrors, boolean countAir) {
+    public static ArrayList<BlockPos> getInvalidPlacements(BlockPos mapCorner, Pair<Integer, Integer> interval, Block[][] map, ArrayList<BlockPos> knownErrors) {
         ArrayList<BlockPos> invalidPlacements = new ArrayList<>();
         for (int x = interval.getRight(); x >= interval.getLeft(); x--) {
             for (int z = 127; z >= 0; z--) {
@@ -539,9 +539,7 @@ public final class Utils {
                 if (knownErrors.contains(absolutePos)) continue;
                 BlockState blockState = MapAreaCache.getCachedBlockState(absolutePos);
                 Block block = blockState.getBlock();
-                if (!countAir) {
-                    if (!blockState.isAir() && map[x][z] != block) invalidPlacements.add(absolutePos);
-                } else if (map[x][z] != block) invalidPlacements.add(absolutePos); 
+                if (map[x][z] != block) invalidPlacements.add(absolutePos); 
             }
         }
         return invalidPlacements;
