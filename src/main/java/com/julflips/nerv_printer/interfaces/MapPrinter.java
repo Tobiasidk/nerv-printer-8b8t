@@ -13,7 +13,7 @@ public interface MapPrinter {
 
     void pause();
 
-    void start();
+    void start(String fileName);
 
     boolean isActive();
 
@@ -24,10 +24,4 @@ public interface MapPrinter {
     void skipBuilding();
 
     void slaveFinished(String slave);
-
-    String getCurrentMapFileName();
-
-    void startWithFile(String fileName);
-
-    boolean getMultiPcMode();
 }

@@ -31,6 +31,8 @@ public final class SlaveSystem {
     public static HashMap<String, Boolean> activeSlavesDict = new HashMap<>();
     public static HashMap<String, Boolean> finishedSlavesDict = new HashMap<>();
     public static SlaveTableController tableController = null;
+    public static boolean multiPc = false;
+    public static String fileName = null;
 
     private static MapPrinter printerModule = null;
     private static int timeout = 0;
@@ -38,7 +40,7 @@ public final class SlaveSystem {
     private static ArrayList<String> toBeConfirmedSlaves = new ArrayList<>();
     private static String master = null;
 
-    public static void setupSlaveSystem(MapPrinter module, int delay, String dmCommand, String prefix, String suffix, int randomSuffixLength) {
+    public static void setupSlaveSystem(MapPrinter module, int delay, String dmCommand, String prefix, String suffix, int randomSuffixLength, boolean multiPcMode) {
         printerModule = module;
         commandDelay = delay;
         directMessageCommand = dmCommand;
@@ -51,6 +53,7 @@ public final class SlaveSystem {
         activeSlavesDict.clear();
         finishedSlavesDict.clear();
         master = null;
+        multiPc = multiPcMode;
     }
 
     public static void queueMasterDM(String message) {
@@ -87,12 +90,6 @@ public final class SlaveSystem {
     }
 
     public static void startAllSlaves() {
-        String fileName = null;
-
-        if (printerModule != null && printerModule.getMultiPcMode()) {
-            fileName = printerModule.getCurrentMapFileName();
-        }
-
         for (String slave : activeSlavesDict.keySet()) {
             if (!activeSlavesDict.get(slave)) {
                 if (fileName != null) {
@@ -223,9 +220,9 @@ public final class SlaveSystem {
                     break;
                 case "start":
                     if (colonSplit.length >= 2) {
-                        printerModule.startWithFile(colonSplit[1]);
+                        printerModule.start(colonSplit[1]);
                     } else {
-                        printerModule.start();
+                        printerModule.start(null);
                     }
                     break;
                 case "remove":

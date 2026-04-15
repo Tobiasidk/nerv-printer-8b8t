@@ -339,6 +339,13 @@ public class CarpetPrinter extends Module implements MapPrinter {
         .build()
     );
 
+    private final Setting<Boolean> safeBlockInteractions = sgAdvanced.add(new BoolSetting.Builder()
+        .name("safe-block-interactions")
+        .description("Ensure empty hand before interacting with blocks. Avoids placing blocks when trying to interact with chests or shulker boxes.")
+        .defaultValue(false)
+        .build()
+    );
+
     private final Setting<Boolean> debugPrints = sgAdvanced.add(new BoolSetting.Builder()
         .name("debug-prints")
         .description("Prints additional information.")
@@ -386,6 +393,7 @@ public class CarpetPrinter extends Module implements MapPrinter {
         .name("multi-pc-mode")
         .description("Master sends the NBT filename to slaves on start.")
         .defaultValue(false)
+        .onChanged((value) -> SlaveSystem.multiPc = value)
         .build()
     );
 
@@ -616,7 +624,7 @@ public class CarpetPrinter extends Module implements MapPrinter {
 
         setInterval(new Pair<>(0, 127));
         // Initialize Slave System settings
-        SlaveSystem.setupSlaveSystem(this, commandDelay.get(), directMessageCommand.get(), senderPrefix.get(), senderSuffix.get(), randomSuffix.get());
+        SlaveSystem.setupSlaveSystem(this, commandDelay.get(), directMessageCommand.get(), senderPrefix.get(), senderSuffix.get(), randomSuffix.get(), multiPcMode.get());
 
         if (!customFolderPath.get()) {
             mapFolder = new File(Utils.getMinecraftDirectory(), "nerv-printer");
@@ -1453,7 +1461,7 @@ public class CarpetPrinter extends Module implements MapPrinter {
     private void interactWithBlock(BlockPos blockPos) {
         //Ensure selected hotbar slot is empty before interacting with a block to prevent accidental block placements
         ItemStack held = mc.player.getInventory().getSelectedStack();
-        if (!held.isEmpty()) {
+        if (!held.isEmpty() && safeBlockInteractions.get()) {
             int emptyHotbar = -1;
             for (int i = 0; i < 9; i++) {
                 if (mc.player.getInventory().getStack(i).isEmpty()) {
@@ -1697,30 +1705,34 @@ public class CarpetPrinter extends Module implements MapPrinter {
         }
     }
 
-    public void start() {
-        if (availableSlots.isEmpty() || state.equals(State.AwaitSlaveNextMap)) {
-            state = State.AwaitNBTFile;
-            return;
-        }
+    public void start(String fileName) {
         if (state.equals(State.AwaitSlaveContinue)) {
             state = oldState;
+            return;
+        }
+        if (availableSlots.isEmpty() || state.equals(State.AwaitSlaveNextMap)) {
+            if (fileName == null) {
+                state = State.AwaitNBTFile;
+                return;
+            } else {
+                File f = new File(mapFolder, fileName);
+                if (!f.exists()) {
+                    warning("Master requested file '" + fileName + "' but it does not exist.");
+                    return;
+                }
+                mapFile = f;
+                if (!loadNBTFile()) {
+                    warning("Failed to load nbt file '" + fileName + "'.");
+                    return;
+                }
+                startBuilding();
+            }
         }
     }
 
     public boolean getActivationReset() {
         return activationReset.get();
     }
-
-    @Override
-    public boolean getMultiPcMode() {
-        return multiPcMode.get();
-    }
-
-    @Override
-    public String getCurrentMapFileName() {
-        return mapFile != null ? mapFile.getName() : null;
-    }
-
 
     public void skipBuilding() {
     }
@@ -1855,29 +1867,10 @@ public class CarpetPrinter extends Module implements MapPrinter {
         return true;
     }
 
-    @Override
-    public void startWithFile(String fileName) {
-        if (state.equals(State.AwaitSlaveContinue)) {
-            state = oldState;
-            return;
-        }
-        File f = new File(mapFolder, fileName);
-        if (!f.exists()) {
-            warning("Master requested file '" + fileName + "' but it does not exist.");
-            return;
-        }
-        this.mapFile = f;
-        if (!loadNBTFile()) {
-            warning("Failed to load nbt file '" + fileName + "'.");
-            return;
-        }
-        startBuilding();
-    }
-
-
     private boolean loadNBTFile() {
         try {
             mapName = mapFile.getName().substring(0, mapFile.getName().lastIndexOf('.'));
+            SlaveSystem.fileName = mapFile.getName();
             info("Building: §a" + mapFile.getName());
             NbtSizeTracker sizeTracker = new NbtSizeTracker(0x20000000L, 100);
             NbtCompound nbt = NbtIo.readCompressed(mapFile.toPath(), sizeTracker);

@@ -80,6 +80,7 @@ public final class Utils {
         //Iterate over map. Player has to be able to see the complete map area
         HashMap<Item, Integer> requiredItems = new HashMap<>();
         boolean isStartSide = true;
+        boolean hasFoundAir = false;
         for (int x = interval.getLeft(); x <= interval.getRight(); x += linesPerRun) {
             for (int z = 0; z < 128; z++) {
                 for (int lineBonus = 0; lineBonus < linesPerRun; lineBonus++) {
@@ -88,6 +89,21 @@ public final class Utils {
                     int adjustedZ = z;
                     if (!isStartSide) adjustedZ = 127 - z;
                     BlockState blockState = MapAreaCache.getCachedBlockState(mapCorner.add(adjustedX, 0, adjustedZ));
+                    if (blockState.isAir()) {
+                        if (!hasFoundAir) {
+                            hasFoundAir = true;
+                            BlockState oppositeBlockState = MapAreaCache.getCachedBlockState(mapCorner.add(adjustedX, 0, 127 - adjustedZ));
+                            //if we find air but the opposite block isnt, that means the snake pattern got reversed at some point, so we reverse it again
+                            if (!oppositeBlockState.isAir() && z < 127 - z) {
+                                isStartSide = !isStartSide;
+                                z = 0;
+                                lineBonus = 0;
+                                adjustedZ = z;
+                                if (!isStartSide) adjustedZ = 127 - z;
+                                blockState = MapAreaCache.getCachedBlockState(mapCorner.add(adjustedX, 0, adjustedZ));
+                            }
+                        }
+                    }
                     if (blockState.isAir() && map[adjustedX][adjustedZ] != null) {
                         //ChatUtils.info("Add material for: " + mapCorner.add(x + lineBonus, 0, adjustedZ).toShortString());
                         Item material = map[adjustedX][adjustedZ].asItem();

@@ -346,6 +346,7 @@ public class StaircasedPrinter extends Module implements MapPrinter {
         .name("multi-pc-mode")
         .description("Master sends the NBT filename to slaves on start.")
         .defaultValue(false)
+        .onChanged((value) -> SlaveSystem.multiPc = value)
         .build()
     );
 
@@ -524,7 +525,7 @@ public class StaircasedPrinter extends Module implements MapPrinter {
 
         setInterval(new Pair<>(0, 127));
         // Initialize Slave System settings
-        SlaveSystem.setupSlaveSystem(this, commandDelay.get(), directMessageCommand.get(), senderPrefix.get(), senderSuffix.get(), randomSuffix.get());
+        SlaveSystem.setupSlaveSystem(this, commandDelay.get(), directMessageCommand.get(), senderPrefix.get(), senderSuffix.get(), randomSuffix.get(), multiPcMode.get());
 
         if (!customFolderPath.get()) {
             mapFolder = new File(Utils.getMinecraftDirectory(), "nerv-printer");
@@ -1691,11 +1692,7 @@ public class StaircasedPrinter extends Module implements MapPrinter {
         }
     }
 
-    public void start() {
-        if (availableSlots.isEmpty()) {
-            state = State.AwaitNBTFile;
-            return;
-        }
+    public void start(String fileName) {
         if (state.equals(State.AwaitSlaveContinue)) {
             state = oldState;
             return;
@@ -1704,6 +1701,23 @@ public class StaircasedPrinter extends Module implements MapPrinter {
             checkpoints.clear();
             checkpoints.add(0, new Pair(usedToolChest.getRight(), new Pair("usedToolChest", null)));
             state = State.Walking;
+            return;
+        }
+        if (fileName == null && availableSlots.isEmpty()) {
+            state = State.AwaitNBTFile;
+            return;
+        } else if (availableSlots.isEmpty()) {
+            File f = new File(mapFolder, fileName);
+            if (!f.exists()) {
+                warning("Master requested file '" + fileName + "' but it does not exist.");
+                return;
+            }
+            mapFile = f;
+            if (!loadNBTFile()) {
+                warning("Failed to load nbt file '" + fileName + "'.");
+                return;
+            }
+            startBuilding();
         }
     }
 
@@ -1872,6 +1886,7 @@ public class StaircasedPrinter extends Module implements MapPrinter {
 
     private boolean loadNBTFile() {
         try {
+            SlaveSystem.fileName = mapFile.getName();
             info("Building: §a" + mapFile.getName());
             NbtSizeTracker sizeTracker = new NbtSizeTracker(0x20000000L, 100);
             NbtCompound nbt = NbtIo.readCompressed(mapFile.toPath(), sizeTracker);
@@ -2007,35 +2022,6 @@ public class StaircasedPrinter extends Module implements MapPrinter {
         } else {
             return "None";
         }
-    }
-
-        @Override
-    public String getCurrentMapFileName() {
-        return mapFile != null ? mapFile.getName() : null;
-    }
-
-    @Override
-    public void startWithFile(String fileName) {
-        if (state.equals(State.AwaitSlaveContinue)) {
-            state = oldState;
-            return;
-        }
-        File f = new File(mapFolder, fileName);
-        if (!f.exists()) {
-            warning("Master requested file '" + fileName + "' but it does not exist.");
-            return;
-        }
-        this.mapFile = f;
-        if (!loadNBTFile()) {
-            warning("Failed to load nbt file '" + fileName + "'.");
-            return;
-        }
-        startBuilding();
-    }
-
-    @Override
-    public boolean getMultiPcMode() {
-        return multiPcMode.get();
     }
 
     @EventHandler
