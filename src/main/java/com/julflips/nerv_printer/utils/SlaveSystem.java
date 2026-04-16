@@ -26,6 +26,8 @@ public final class SlaveSystem {
     public static String directMessageCommand = "w";
     public static String senderPrefix = "";
     public static String senderSuffix = "";
+    public static String sentPrefix = "";
+    public static String sentSuffix = "";
     public static int randomLength = 0;
     public static ArrayList<String> slaves = new ArrayList<>();
     public static HashMap<String, Boolean> activeSlavesDict = new HashMap<>();
@@ -39,13 +41,17 @@ public final class SlaveSystem {
     private static ArrayList<String> toBeSentMessages = new ArrayList<>();
     private static ArrayList<String> toBeConfirmedSlaves = new ArrayList<>();
     private static String master = null;
+    private static String toBeConfirmedMessage = null;
+    private static boolean pendingSentMessageConfirmation = false;
 
-    public static void setupSlaveSystem(MapPrinter module, int delay, String dmCommand, String prefix, String suffix, int randomSuffixLength, boolean multiPcMode) {
+    public static void setupSlaveSystem(MapPrinter module, int delay, String dmCommand, String prefix, String suffix, String sentprefix, String sentsuffix, int randomSuffixLength, boolean multiPcMode) {
         printerModule = module;
         commandDelay = delay;
         directMessageCommand = dmCommand;
         senderPrefix = prefix;
         senderSuffix = suffix;
+        sentPrefix = sentprefix;
+        sentSuffix = sentsuffix;
         randomLength = randomSuffixLength;
         slaves.clear();
         toBeSentMessages.clear();
@@ -184,6 +190,12 @@ public final class SlaveSystem {
         return false;
     }
 
+    private static String buildServerResponse(String message) {
+        if (!message.startsWith(directMessageCommand)) return null;
+        String remaining = message.substring(directMessageCommand.length()).trim();
+        return (sentPrefix + remaining.replaceFirst(" ", sentSuffix));
+    }
+
     private static void handleMessage(String rawMessage, @Nullable String sender) {
         String content;
         // Extract sender from message if not provided in packet
@@ -273,7 +285,19 @@ public final class SlaveSystem {
         }
 
         if (event.packet instanceof GameMessageS2CPacket packet) {
+            String raw = packet.content().getString();
+            checkConfirmation(raw);
             handleMessage(packet.content().getString(), null);
+        }
+    }
+
+    private static void checkConfirmation(String rawMessage) {
+        if (!pendingSentMessageConfirmation || toBeConfirmedMessage == null) return;
+        if (rawMessage.equals(toBeConfirmedMessage)) {
+            toBeSentMessages.remove(0);
+            toBeConfirmedMessage = null;
+            pendingSentMessageConfirmation = false;
+            timeout = commandDelay;
         }
     }
 
@@ -283,7 +307,9 @@ public final class SlaveSystem {
         if (timeout > 0) timeout--;
         if (!toBeSentMessages.isEmpty()) {
             if (timeout <= 0) {
-                String message = toBeSentMessages.remove(0);
+                String message = toBeSentMessages.get(0);
+                toBeConfirmedMessage = buildServerResponse(message);
+                pendingSentMessageConfirmation = toBeConfirmedMessage != null;
                 if (randomLength > 0) message += ":" + UUID.randomUUID().toString().substring(0, randomLength);
                 mc.getNetworkHandler().sendChatCommand(message);
                 timeout = commandDelay;

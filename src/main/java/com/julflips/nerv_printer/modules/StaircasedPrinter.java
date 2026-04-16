@@ -332,6 +332,22 @@ public class StaircasedPrinter extends Module implements MapPrinter {
         .build()
     );
 
+        private final Setting<String> sentPrefix = sgMultiUser.add(new StringSetting.Builder()
+        .name("sent-prefix")
+        .description("The text that always comes before the name of target of every direct message.")
+        .defaultValue("To ")
+        .onChanged((value) -> SlaveSystem.sentPrefix = value)
+        .build()
+    );
+
+    private final Setting<String> sentSuffix = sgMultiUser.add(new StringSetting.Builder()
+        .name("sent-suffix")
+        .description("The text that is always between the name of the target and the actual message.")
+        .defaultValue(": ")
+        .onChanged((value) -> SlaveSystem.sentSuffix = value)
+        .build()
+    );
+
     private final Setting<Integer> commandDelay = sgMultiUser.add(new IntSetting.Builder()
         .name("chat-message-delay")
         .description("How many ticks to wait between sending chat messages (for multi-user printing).")
@@ -525,7 +541,7 @@ public class StaircasedPrinter extends Module implements MapPrinter {
 
         setInterval(new Pair<>(0, 127));
         // Initialize Slave System settings
-        SlaveSystem.setupSlaveSystem(this, commandDelay.get(), directMessageCommand.get(), senderPrefix.get(), senderSuffix.get(), randomSuffix.get(), multiPcMode.get());
+        SlaveSystem.setupSlaveSystem(this, commandDelay.get(), directMessageCommand.get(), senderPrefix.get(), senderSuffix.get(), sentPrefix.get(), sentSuffix.get(), randomSuffix.get(), multiPcMode.get());
 
         if (!customFolderPath.get()) {
             mapFolder = new File(Utils.getMinecraftDirectory(), "nerv-printer");
