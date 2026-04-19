@@ -998,7 +998,7 @@ public class CarpetPrinter extends Module implements MapPrinter {
 
         // Swap into Hotbar
         if (toBeSwappedSlot != -1) {
-            Utils.swapIntoHotbar(toBeSwappedSlot, availableHotBarSlots, map, workingInterval, linesPerRun.get(), mapCorner);
+            Utils.swapIntoHotbar(toBeSwappedSlot, availableHotBarSlots, map, workingInterval, linesPerRun.get(), mapCorner, northToSouth.get());
             toBeSwappedSlot = -1;
             if (postSwapDelay.get() != 0) {
                 timeoutTicks = postSwapDelay.get();
@@ -1037,7 +1037,7 @@ public class CarpetPrinter extends Module implements MapPrinter {
         if (state == State.Dumping) {
             int dumpSlot = getDumpSlot();
             if (dumpSlot == -1) {
-                HashMap<Item, Integer> requiredItems = Utils.getRequiredItems(mapCorner, workingInterval, linesPerRun.get(), availableSlots.size(), map);
+                HashMap<Item, Integer> requiredItems = Utils.getRequiredItems(mapCorner, workingInterval, linesPerRun.get(), availableSlots.size(), map, northToSouth.get());
                 Pair<ArrayList<Integer>, HashMap<Item, Integer>> invInformation = Utils.getInvInformation(requiredItems, availableSlots);
                 refillInventory(invInformation.getRight());
                 state = State.Walking;
@@ -1356,7 +1356,7 @@ public class CarpetPrinter extends Module implements MapPrinter {
     private void refillInventory(HashMap<Item, Integer> invMaterial) {
         //Fills restockList with required items
         restockList.clear();
-        HashMap<Item, Integer> requiredItems = Utils.getRequiredItems(mapCorner, workingInterval, linesPerRun.get(), availableSlots.size(), map);
+        HashMap<Item, Integer> requiredItems = Utils.getRequiredItems(mapCorner, workingInterval, linesPerRun.get(), availableSlots.size(), map, northToSouth.get());
         for (Item item : invMaterial.keySet()) {
             int oldAmount = requiredItems.remove(item);
             requiredItems.put(item, oldAmount - invMaterial.get(item));
@@ -1694,7 +1694,7 @@ public class CarpetPrinter extends Module implements MapPrinter {
     }
 
     private int getDumpSlot() {
-        HashMap<Item, Integer> requiredItems = Utils.getRequiredItems(mapCorner, workingInterval, linesPerRun.get(), availableSlots.size(), map);
+        HashMap<Item, Integer> requiredItems = Utils.getRequiredItems(mapCorner, workingInterval, linesPerRun.get(), availableSlots.size(), map, northToSouth.get());
         Pair<ArrayList<Integer>, HashMap<Item, Integer>> invInformation = Utils.getInvInformation(requiredItems, availableSlots);
         if (invInformation.getLeft().isEmpty()) {
             return -1;

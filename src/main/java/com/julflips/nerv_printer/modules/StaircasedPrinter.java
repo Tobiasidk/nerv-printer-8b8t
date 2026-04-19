@@ -957,7 +957,7 @@ public class StaircasedPrinter extends Module implements MapPrinter {
 
         // Swap into Hotbar
         if (toBeSwappedSlot != -1) {
-            Utils.swapIntoHotbar(toBeSwappedSlot, availableHotBarSlots, map, workingInterval, 1, mapCorner);
+            Utils.swapIntoHotbar(toBeSwappedSlot, availableHotBarSlots, map, workingInterval, 1, mapCorner, true);
             toBeSwappedSlot = -1;
             if (postSwapDelay.get() != 0) {
                 timeoutTicks = postSwapDelay.get();

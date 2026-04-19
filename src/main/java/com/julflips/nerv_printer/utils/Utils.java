@@ -75,11 +75,11 @@ public final class Utils {
         return slots;
     }
 
-    public static HashMap<Item, Integer> getRequiredItems(BlockPos mapCorner, Pair<Integer, Integer> interval, int linesPerRun, int availableSlotsSize, Block[][] map) {
+    public static HashMap<Item, Integer> getRequiredItems(BlockPos mapCorner, Pair<Integer, Integer> interval, int linesPerRun, int availableSlotsSize, Block[][] map, boolean northToSouth) {
         //Calculate the next items to restock
         //Iterate over map. Player has to be able to see the complete map area
         HashMap<Item, Integer> requiredItems = new HashMap<>();
-        boolean isStartSide = true;
+        boolean isStartSide = northToSouth;
         boolean hasFoundAir = false;
         for (int x = interval.getLeft(); x <= interval.getRight(); x += linesPerRun) {
             for (int z = 0; z < 128; z++) {
@@ -213,7 +213,7 @@ public final class Utils {
     }
 
     //find the last item to be used among the usable hotbar slots
-    private static <T> Integer getLastUsedHotbarItem(ArrayList<Integer> hotBarSlots, T[][] map, Pair<Integer, Integer> interval, int linesPerRun, BlockPos mapCorner) {
+    private static <T> Integer getLastUsedHotbarItem(ArrayList<Integer> hotBarSlots, T[][] map, Pair<Integer, Integer> interval, int linesPerRun, BlockPos mapCorner, boolean northToSouth) {
         HashMap<Item, Integer> hotBarItems = new HashMap<>();
         HashMap<Item, Integer> itemToHotbarSlot = new HashMap<>();
 
@@ -228,8 +228,10 @@ public final class Utils {
         if (hotBarItems.isEmpty()) return null;
 
         int index = 0;
-        boolean isStartSide = true;
+        boolean isStartSide = northToSouth;
         boolean hasFoundAir = false;
+        boolean staircasedMode = map instanceof Pair<?, ?>[][]; 
+        //if the map is staircased, logic changes a bit, 1 line per run and only scan north to south.
 
         outer:
         for (int x = interval.getLeft(); x <= interval.getRight(); x += linesPerRun) {
@@ -238,12 +240,13 @@ public final class Utils {
                     int adjustedX = x + lineBonus;
                     if (adjustedX > interval.getRight()) break;
                     int adjustedZ = isStartSide ? z : 127 - z;
+                    int y = extractYFromCell(map[adjustedX][adjustedZ]);
 
-                    BlockState blockState = MapAreaCache.getCachedBlockState(mapCorner.add(adjustedX, 0, adjustedZ));
+                    BlockState blockState = MapAreaCache.getCachedBlockState(mapCorner.add(adjustedX, y, adjustedZ));
                     if (blockState.isAir()) {
-                        if (!hasFoundAir) {
+                        if (!hasFoundAir && !staircasedMode) { //only for flat maps
                             hasFoundAir = true;
-                            BlockState oppositeBlockState = MapAreaCache.getCachedBlockState(mapCorner.add(adjustedX, 0, 127 - adjustedZ));
+                            BlockState oppositeBlockState = MapAreaCache.getCachedBlockState(mapCorner.add(adjustedX, y, 127 - adjustedZ));
                             //if we find air but the opposite block isnt, that means the snake pattern got reversed at some point, so we reverse it again
                             if (!oppositeBlockState.isAir() && z < 127 - z) {
                                 isStartSide = !isStartSide;
@@ -269,7 +272,7 @@ public final class Utils {
                     }
                 }
             }
-            isStartSide = !isStartSide;
+            if (!staircasedMode) isStartSide = !isStartSide;
         }
 
         ArrayList<Integer> neverUsed = new ArrayList<>();
@@ -315,7 +318,15 @@ public final class Utils {
         return null;
     }
 
-    public static <T> void swapIntoHotbar(int slot, ArrayList<Integer> hotBarSlots, T[][] map, Pair<Integer,Integer> workingInterval, int linesPerRun, BlockPos mapCorner) {
+    private static <T> int extractYFromCell(T cell) {
+        if (cell instanceof Pair<?, ?> p) {
+            Object right = p.getRight();
+            if (right instanceof Integer i) return i;
+        }
+        return 0; // flat format, y=0
+    }
+
+    public static <T> void swapIntoHotbar(int slot, ArrayList<Integer> hotBarSlots, T[][] map, Pair<Integer,Integer> workingInterval, int linesPerRun, BlockPos mapCorner, boolean northToSouth) {
         HashMap<Item, Integer> itemFrequency = new HashMap<>();
         HashMap<Item, Integer> itemSlot = new HashMap<>();
         int targetSlot = hotBarSlots.get(0);
@@ -351,7 +362,7 @@ public final class Utils {
 
         // if hotbar is full & unique then replace last to use item
         if (allFullAndUnique) {
-            Integer chosen = getLastUsedHotbarItem(hotBarSlots, map, workingInterval, linesPerRun, mapCorner);
+            Integer chosen = getLastUsedHotbarItem(hotBarSlots, map, workingInterval, linesPerRun, mapCorner, northToSouth);
             if (chosen != null) {
                 targetSlot = chosen;
             }
