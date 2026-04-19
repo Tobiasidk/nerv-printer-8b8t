@@ -33,7 +33,6 @@ public final class SlaveSystem {
     public static HashMap<String, Boolean> activeSlavesDict = new HashMap<>();
     public static HashMap<String, Boolean> finishedSlavesDict = new HashMap<>();
     public static SlaveTableController tableController = null;
-    public static boolean multiPc = false;
     public static String fileName = null;
 
     private static MapPrinter printerModule = null;
@@ -44,7 +43,7 @@ public final class SlaveSystem {
     private static String toBeConfirmedMessage = null;
     private static boolean pendingSentMessageConfirmation = false;
 
-    public static void setupSlaveSystem(MapPrinter module, int delay, String dmCommand, String prefix, String suffix, String sentprefix, String sentsuffix, int randomSuffixLength, boolean multiPcMode) {
+    public static void setupSlaveSystem(MapPrinter module, int delay, String dmCommand, String prefix, String suffix, String sentprefix, String sentsuffix, int randomSuffixLength) {
         printerModule = module;
         commandDelay = delay;
         directMessageCommand = dmCommand;
@@ -59,7 +58,6 @@ public final class SlaveSystem {
         activeSlavesDict.clear();
         finishedSlavesDict.clear();
         master = null;
-        multiPc = multiPcMode;
     }
 
     public static void queueMasterDM(String message) {
@@ -98,7 +96,7 @@ public final class SlaveSystem {
     public static void startAllSlaves() {
         for (String slave : activeSlavesDict.keySet()) {
             if (!activeSlavesDict.get(slave)) {
-                if (fileName != null && multiPc) {
+                if (fileName != null) {
                     queueDM(slave, "start:" + fileName);
                 } else {
                     queueDM(slave, "start");

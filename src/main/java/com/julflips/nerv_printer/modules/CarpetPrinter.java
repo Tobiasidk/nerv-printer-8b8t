@@ -349,14 +349,6 @@ public class CarpetPrinter extends Module implements MapPrinter {
         .build()
     );
 
-    private final Setting<Boolean> multiPcMode = sgMultiUser.add(new BoolSetting.Builder()
-        .name("multi-pc-mode")
-        .description("Master sends the NBT filename to slaves on start.")
-        .defaultValue(false)
-        .onChanged((value) -> SlaveSystem.multiPc = value)
-        .build()
-    );
-
     private final Setting<Integer> randomSuffix = sgMultiUser.add(new IntSetting.Builder()
         .name("random-suffix-length")
         .description("Generate a randomized suffix to circumvent anti-spam plugins.")
@@ -517,7 +509,7 @@ public class CarpetPrinter extends Module implements MapPrinter {
 
         setInterval(new Pair<>(0, 127));
         // Initialize Slave System settings
-        SlaveSystem.setupSlaveSystem(this, commandDelay.get(), directMessageCommand.get(), senderPrefix.get(), senderSuffix.get(), sentPrefix.get(), sentSuffix.get(), randomSuffix.get(), multiPcMode.get());
+        SlaveSystem.setupSlaveSystem(this, commandDelay.get(), directMessageCommand.get(), senderPrefix.get(), senderSuffix.get(), sentPrefix.get(), sentSuffix.get(), randomSuffix.get());
 
         if (!customFolderPath.get()) {
             mapFolder = new File(Utils.getMinecraftDirectory(), "nerv-printer");
