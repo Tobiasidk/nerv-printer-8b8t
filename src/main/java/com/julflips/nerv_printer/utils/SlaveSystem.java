@@ -98,7 +98,7 @@ public final class SlaveSystem {
     public static void startAllSlaves() {
         for (String slave : activeSlavesDict.keySet()) {
             if (!activeSlavesDict.get(slave)) {
-                if (fileName != null) {
+                if (fileName != null && multiPc) {
                     queueDM(slave, "start:" + fileName);
                 } else {
                     queueDM(slave, "start");
