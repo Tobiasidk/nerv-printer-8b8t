@@ -13,7 +13,7 @@ public interface MapPrinter {
 
     void pause();
 
-    void start();
+    void start(String fileName);
 
     boolean isActive();
 

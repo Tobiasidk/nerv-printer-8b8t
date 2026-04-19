@@ -323,6 +323,22 @@ public class CarpetPrinter extends Module implements MapPrinter {
         .build()
     );
 
+    private final Setting<String> sentPrefix = sgMultiUser.add(new StringSetting.Builder()
+        .name("sent-prefix")
+        .description("The text that always comes before the name of target of every direct message.")
+        .defaultValue("To ")
+        .onChanged((value) -> SlaveSystem.sentPrefix = value)
+        .build()
+    );
+
+    private final Setting<String> sentSuffix = sgMultiUser.add(new StringSetting.Builder()
+        .name("sent-suffix")
+        .description("The text that is always between the name of the target and the actual message.")
+        .defaultValue(": ")
+        .onChanged((value) -> SlaveSystem.sentSuffix = value)
+        .build()
+    );
+
     private final Setting<Integer> commandDelay = sgMultiUser.add(new IntSetting.Builder()
         .name("chat-message-delay")
         .description("How many ticks to wait between sending chat messages (for multi-user printing).")
@@ -330,6 +346,14 @@ public class CarpetPrinter extends Module implements MapPrinter {
         .min(1)
         .sliderRange(1, 100)
         .onChanged((value) -> SlaveSystem.commandDelay = value)
+        .build()
+    );
+
+    private final Setting<Boolean> multiPcMode = sgMultiUser.add(new BoolSetting.Builder()
+        .name("multi-pc-mode")
+        .description("Master sends the NBT filename to slaves on start.")
+        .defaultValue(false)
+        .onChanged((value) -> SlaveSystem.multiPc = value)
         .build()
     );
 
@@ -493,7 +517,7 @@ public class CarpetPrinter extends Module implements MapPrinter {
 
         setInterval(new Pair<>(0, 127));
         // Initialize Slave System settings
-        SlaveSystem.setupSlaveSystem(this, commandDelay.get(), directMessageCommand.get(), senderPrefix.get(), senderSuffix.get(), randomSuffix.get());
+        SlaveSystem.setupSlaveSystem(this, commandDelay.get(), directMessageCommand.get(), senderPrefix.get(), senderSuffix.get(), sentPrefix.get(), sentSuffix.get(), randomSuffix.get(), multiPcMode.get());
 
         if (!customFolderPath.get()) {
             mapFolder = new File(Utils.getMinecraftDirectory(), "nerv-printer");
@@ -1348,13 +1372,28 @@ public class CarpetPrinter extends Module implements MapPrinter {
         }
     }
 
-    public void start() {
-        if (availableSlots.isEmpty() || state.equals(State.AwaitSlaveNextMap)) {
-            state = State.AwaitNBTFile;
-            return;
-        }
+    public void start(String fileName) {
         if (state.equals(State.AwaitSlaveContinue)) {
             state = oldState;
+            return;
+        }
+        if (availableSlots.isEmpty() || state.equals(State.AwaitSlaveNextMap)) {
+            if (fileName == null) {
+                state = State.AwaitNBTFile;
+                return;
+            } else {
+                File f = new File(mapFolder, fileName);
+                if (!f.exists()) {
+                    warning("Master requested file '" + fileName + "' but it does not exist.");
+                    return;
+                }
+                mapFile = f;
+                if (!loadNBTFile()) {
+                    warning("Failed to load nbt file '" + fileName + "'.");
+                    return;
+                }
+                startBuilding();
+            }
         }
     }
 
@@ -1490,6 +1529,7 @@ public class CarpetPrinter extends Module implements MapPrinter {
     }
 
     private boolean loadNBTFile() {
+        SlaveSystem.fileName = mapFile.getName();
         try {
             info("Building: §a" + mapFile.getName());
             NbtSizeTracker sizeTracker = new NbtSizeTracker(0x20000000L, 100);
